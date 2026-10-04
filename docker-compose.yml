@@ -1,0 +1,49 @@
+name: ciodesk
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-helpdesk}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-helpdesk}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      # host:container — change the left side to ":80" to bind directly.
+      - "${APP_PORT:-8080}:80"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-helpdesk}
+      DATABASE_WAIT_HOST: db
+      DATABASE_WAIT_PORT: 5432
+      # CHANGE THIS. Sessions are signed with it; a weak/known value lets anyone
+      # forge a token. Generate one with:  openssl rand -base64 48
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env before starting}
+      UPLOAD_DIR: /app/uploads
+      # Bootstrap sysadmin, created on first boot only.
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+    volumes:
+      - uploads:/app/uploads
+
+volumes:
+  postgres_data:
+  uploads:

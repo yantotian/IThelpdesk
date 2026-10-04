@@ -1,0 +1,145 @@
+/* stylelint-disable */
+/* Industrial HUD Design System — warm-neutral light-only palette */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --radius: 0rem;
+    /* ── Light mode (only mode) — warm neutrals, strong contrast ── */
+    --background: 30 18% 96%;          /* warm off-white */
+    --foreground: 20 20% 10%;          /* near-black — 15:1 contrast */
+    --card: 30 15% 100%;               /* white card */
+    --card-foreground: 20 20% 10%;
+    --popover: 30 15% 100%;
+    --popover-foreground: 20 20% 10%;
+    --primary: 18 85% 40%;             /* deep terracotta — 4.6:1 on white */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 30 14% 91%;           /* warm sand */
+    --secondary-foreground: 20 15% 18%;
+    --muted: 30 10% 86%;               /* muted sand */
+    --muted-foreground: 20 12% 38%;    /* 5.5:1 on white card */
+    --accent: 18 85% 40%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 2 70% 42%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 25 12% 74%;              /* warm visible border */
+    --input: 30 14% 93%;
+    --ring: 18 85% 40%;
+    /* Sidebar */
+    --sidebar-background: 30 14% 93%;
+    --sidebar-foreground: 20 20% 10%;
+    --sidebar-primary: 18 85% 40%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 30 12% 87%;
+    --sidebar-accent-foreground: 20 15% 18%;
+    --sidebar-border: 25 12% 78%;
+    --sidebar-ring: 18 85% 40%;
+    /* Charts */
+    --chart-1: 16 90% 42%;
+    --chart-2: 200 75% 40%;
+    --chart-3: 130 55% 38%;
+    --chart-4: 40 90% 44%;
+    --chart-5: 275 55% 48%;
+    --chart-tick: 20 12% 38%;
+    --chart-tooltip-bg: 30 15% 100%;
+    --chart-tooltip-border: 25 12% 74%;
+    /* Status colors */
+    --status-new: 210 75% 40%;
+    --status-assigned: 40 85% 40%;
+    --status-in-progress: 195 70% 38%;
+    --status-resolved: 130 55% 36%;
+    --status-on-hold: 275 55% 44%;
+    --status-verified: 165 62% 36%;
+    --status-closed: 0 0% 42%;
+    /* Priority colors */
+    --priority-low: 0 0% 42%;
+    --priority-medium: 210 65% 40%;
+    --priority-high: 35 85% 40%;
+    --priority-critical: 2 70% 42%;
+    /* Shadows & Gradients */
+    --shadow-card: 0 1px 4px hsl(20 20% 10% / 0.07), 0 0 0 1px hsl(var(--border));
+    --shadow-hover: 0 0 8px 1px hsl(18 85% 40% / 0.2);
+    --gradient-primary: linear-gradient(135deg, hsl(18 85% 40%), hsl(25 85% 34%));
+    --gradient-card: linear-gradient(180deg, hsl(30 15% 100%), hsl(30 12% 97%));
+    --gradient-background: linear-gradient(180deg, hsl(30 18% 96%), hsl(30 14% 93%));
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    background-image:
+      radial-gradient(ellipse at 50% 0%, hsl(16 100% 50% / 0.04) 0%, transparent 60%);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+  }
+
+  h1 { font-size: 1.875rem; }
+  h2 { font-size: 1.5rem; }
+  h3 { font-size: 1.25rem; }
+  h4 { font-size: 1.125rem; font-weight: 600; }
+
+  p, li, td, th { font-size: 0.9375rem; }  /* 15px — comfortable reading */
+
+  /* Grain texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.4;
+  }
+}
+
+@layer utilities {
+  /* Orange laser line separator */
+  .laser-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, hsl(var(--primary)), transparent);
+  }
+
+  /* Neon orange glow on active elements */
+  .hud-glow {
+    box-shadow: 0 0 8px 1px hsl(16 100% 50% / 0.4), inset 0 0 4px hsl(16 100% 50% / 0.1);
+  }
+
+  /* Mechanical press feedback */
+  .hud-press {
+    transition: transform 80ms ease, border-color 80ms ease;
+  }
+  .hud-press:active {
+    transform: translateY(1px) scaleY(0.98);
+    border-color: hsl(var(--primary));
+  }
+
+  /* Monospace heading — kept as Inter semibold for consistency */
+  .mono { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; font-weight: 600; letter-spacing: 0.02em; }
+
+  /* Status badge colors */
+  .status-new      { color: hsl(var(--status-new)); border-color: hsl(var(--status-new)); }
+  .status-assigned { color: hsl(var(--status-assigned)); border-color: hsl(var(--status-assigned)); }
+  .status-in_progress { color: hsl(var(--status-in-progress)); border-color: hsl(var(--status-in-progress)); }
+  .status-resolved { color: hsl(var(--status-resolved)); border-color: hsl(var(--status-resolved)); }
+  .status-on_hold  { color: hsl(var(--status-on-hold)); border-color: hsl(var(--status-on-hold)); }
+  .status-verified { color: hsl(var(--status-verified)); border-color: hsl(var(--status-verified)); }
+  .status-closed   { color: hsl(var(--status-closed)); border-color: hsl(var(--status-closed)); }
+}
