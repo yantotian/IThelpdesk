@@ -1,0 +1,4 @@
+# Force LF for shell scripts so docker/entrypoint.sh stays executable
+# in Linux containers even when checked out on Windows (core.autocrlf=true).
+*.sh text eol=lf
+docker/nginx.conf text eol=lf

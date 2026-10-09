@@ -63,6 +63,14 @@ router.post('/register', loginLimiter, async (req, res) => {
       res.status(400).json({ error: 'Username and password are required' });
       return;
     }
+    if (!office || !String(office).trim()) {
+      res.status(400).json({ error: 'Office is required' });
+      return;
+    }
+    if (!contact || !String(contact).trim()) {
+      res.status(400).json({ error: 'Contact is required' });
+      return;
+    }
 
     const existing = await sql`SELECT id FROM users WHERE username = ${username.toLowerCase()} LIMIT 1`;
     if (existing.length > 0) {
@@ -75,7 +83,7 @@ router.post('/register', loginLimiter, async (req, res) => {
 
     const users = await sql`
       INSERT INTO users (username, email, password_hash, full_name, office, contact, role)
-      VALUES (${username.toLowerCase()}, ${email}, ${passwordHash}, ${full_name || username.toLowerCase()}, ${office || null}, ${contact || null}, 'requester')
+      VALUES (${username.toLowerCase()}, ${email}, ${passwordHash}, ${full_name || username.toLowerCase()}, ${String(office).trim()}, ${String(contact).trim()}, 'requester')
       RETURNING id, username, email, full_name, role, office, contact
     `;
 

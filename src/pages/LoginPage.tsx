@@ -39,6 +39,14 @@ if (mode === "register" && !agreed) {
           toast.error(pwdError);
           return;
         }
+        if (!form.office.trim()) {
+          toast.error("Office is required");
+          return;
+        }
+        if (!form.contact.trim()) {
+          toast.error("Contact is required");
+          return;
+        }
       }
       setLoading(true);
     try {
@@ -59,8 +67,8 @@ if (mode === "register" && !agreed) {
           password: form.password,
           full_name: form.full_name,
           role: "requester",
-          office: form.office || undefined,
-          contact: form.contact || undefined,
+          office: form.office.trim(),
+          contact: form.contact.trim(),
         });
         if (error) {
           toast.error(error.message);
@@ -227,9 +235,10 @@ if (mode === "register" && !agreed) {
                 <>
                   <div className="space-y-1">
                     <Label className="mono text-xs text-muted-foreground">
-                      OFFICE (optional)
+                      OFFICE *
                     </Label>
                     <Input
+                      required
                       value={form.office}
                       onChange={(e) => set("office", e.target.value)}
                       placeholder="e.g. City Information Office"
@@ -238,9 +247,10 @@ if (mode === "register" && !agreed) {
                   </div>
                   <div className="space-y-1">
                     <Label className="mono text-xs text-muted-foreground">
-                      CONTACT (optional)
+                      CONTACT *
                     </Label>
                     <Input
+                      required
                       value={form.contact}
                       onChange={(e) => set("contact", e.target.value)}
                       placeholder="Email or phone"

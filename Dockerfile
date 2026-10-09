@@ -43,7 +43,8 @@ COPY --from=api  /app/src/db/schema.sql /app/api/src/db/schema.sql
 
 COPY docker/nginx.conf /etc/nginx/http.d/default.conf
 COPY docker/entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh && mkdir -p /app/uploads
+# Strip CR so the script runs even when checked out with CRLF on Windows.
+RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh && mkdir -p /app/uploads
 
 ENV NODE_ENV=production \
     PORT=3001 \
