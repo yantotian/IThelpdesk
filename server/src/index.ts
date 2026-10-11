@@ -1,6 +1,7 @@
 import './env.js';
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import { spaShellLimiter } from './middleware/rateLimit.js';
 import path from 'path';
 import fs from 'fs';
@@ -34,6 +35,7 @@ app.disable('x-powered-by');
 // loopback address for every request, which collapses all clients into a
 // single rate-limit bucket — and makes it trivially easy to spoof otherwise.
 app.set('trust proxy', 1);
+app.use(compression());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
@@ -76,7 +78,21 @@ const distCandidates = [
 ];
 const distDir = distCandidates.find((d) => fs.existsSync(path.join(d, 'index.html')));
 if (distDir) {
-  app.use(express.static(distDir));
+  app.use(
+    express.static(distDir, {
+      index: false,
+      setHeaders(res, filePath) {
+        if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        } else if (/\.[0-9a-f]{8,}\./i.test(filePath)) {
+          // Vite hashes asset filenames — safe to cache forever.
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else {
+          res.setHeader('Cache-Control', 'public, max-age=2592000');
+        }
+      },
+    })
+  );
 
   // The SPA shell is the same bytes for every route, so read it once at boot
   // rather than stat + read it on each client-side navigation. This is only

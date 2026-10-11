@@ -1,4 +1,4 @@
-import jsPDF from 'jspdf';
+import type jsPDF from 'jspdf';
 import { formatUtc8DateStamp, formatUtc8Stamp } from './utils';
 import type {
   Ticket,
@@ -393,7 +393,8 @@ export async function exportTicketToPdf(data: TicketPdfData): Promise<void> {
   const title = 'IT HELPDESK \u2014 TICKET REPORT';
   const meta = `EXPORTED ${formatUtc8DateStamp(new Date())} \u00B7 ${STATUS_LABELS[ticket.status]} \u00B7 ${PRIORITY_LABELS[ticket.priority]}`;
   bayuganLogoDataUrl = await loadBayuganLogo();
-  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const { default: JsPDF } = await import('jspdf');
+  const pdf = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   addHeader(pdf, title, meta);
 
   let y = CONTENT_TOP;
@@ -524,7 +525,8 @@ export async function exportReportsToPdf(data: ReportsPdfData): Promise<void> {
   const title = 'IT HELPDESK \u2014 REPORTS';
   const meta = `PERIOD: ${period ?? 'ALL TIME'} \u00B7 ${formatUtc8DateStamp(new Date())}`;
   bayuganLogoDataUrl = await loadBayuganLogo();
-  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const { default: JsPDF } = await import('jspdf');
+  const pdf = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   addHeader(pdf, title, meta);
 
   const byStatus: Record<string, number> = {};

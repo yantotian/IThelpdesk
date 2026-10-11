@@ -1,25 +1,26 @@
 import { Navigate } from 'react-router-dom';
-import LoginPage from '@/pages/LoginPage';
-import DashboardPage from '@/pages/DashboardPage';
-import ProfilePage from '@/pages/ProfilePage';
-import TicketListPage from '@/pages/TicketListPage';
-import CreateTicketPage from '@/pages/CreateTicketPage';
-import TicketDetailPage from '@/pages/TicketDetailPage';
-import KanbanPage from '@/pages/KanbanPage';
-import UsersPage from '@/pages/admin/UsersPage';
-import CategoriesPage from '@/pages/admin/CategoriesPage';
-import PrioritiesPage from '@/pages/admin/PrioritiesPage';
-import SystemConfigPage from '@/pages/admin/SystemConfigPage';
-import ReportsPage from '@/pages/admin/ReportsPage';
-import AuditLogPage from '@/pages/admin/AuditLogPage';
-import TemplatesPage from '@/pages/admin/TemplatesPage';
-import IDRequestPage from '@/pages/IDRequestPage';
-import IDRequestsAdminPage from '@/pages/admin/IDRequestsAdminPage';
-import ICTInventoryPage from '@/pages/admin/ICTInventoryPage';
-import ICTDashboardPage from '@/pages/admin/ICTDashboardPage';
-import ICTSubmissionPage from '@/pages/ICTSubmissionPage';
-import ICTSubmissionsReviewPage from '@/pages/admin/ICTSubmissionsReviewPage';
-import type { ReactNode } from 'react';
+import { lazy, type ReactNode } from 'react';
+
+const LoginPage = lazy(() => import('@/pages/LoginPage'));
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
+const ProfilePage = lazy(() => import('@/pages/ProfilePage'));
+const TicketListPage = lazy(() => import('@/pages/TicketListPage'));
+const CreateTicketPage = lazy(() => import('@/pages/CreateTicketPage'));
+const TicketDetailPage = lazy(() => import('@/pages/TicketDetailPage'));
+const KanbanPage = lazy(() => import('@/pages/KanbanPage'));
+const UsersPage = lazy(() => import('@/pages/admin/UsersPage'));
+const CategoriesPage = lazy(() => import('@/pages/admin/CategoriesPage'));
+const PrioritiesPage = lazy(() => import('@/pages/admin/PrioritiesPage'));
+const SystemConfigPage = lazy(() => import('@/pages/admin/SystemConfigPage'));
+const ReportsPage = lazy(() => import('@/pages/admin/ReportsPage'));
+const AuditLogPage = lazy(() => import('@/pages/admin/AuditLogPage'));
+const TemplatesPage = lazy(() => import('@/pages/admin/TemplatesPage'));
+const IDRequestPage = lazy(() => import('@/pages/IDRequestPage'));
+const IDRequestsAdminPage = lazy(() => import('@/pages/admin/IDRequestsAdminPage'));
+const ICTInventoryPage = lazy(() => import('@/pages/admin/ICTInventoryPage'));
+const ICTDashboardPage = lazy(() => import('@/pages/admin/ICTDashboardPage'));
+const ICTSubmissionPage = lazy(() => import('@/pages/ICTSubmissionPage'));
+const ICTSubmissionsReviewPage = lazy(() => import('@/pages/admin/ICTSubmissionsReviewPage'));
 
 export interface RouteConfig {
   name: string;
@@ -51,5 +52,3 @@ export const routes: RouteConfig[] = [
   { name: 'Submit Inventory',       path: '/ict-submission',            element: <ICTSubmissionPage /> },
   { name: 'Inventory Submissions',  path: '/admin/ict-submissions',     element: <ICTSubmissionsReviewPage /> },
 ];
-
-
