@@ -21,6 +21,8 @@ are all contained in this repository.
 - [Database schema](#database-schema)
 - [Data and backups](#data-and-backups)
 - [Roles](#roles)
+- [Adding a form](#adding-a-form)
+- [Reference folder](#reference-folder)
 - [Known limitations](#known-limitations)
 
 ---
@@ -271,6 +273,7 @@ cd server && npx tsc --noEmit       # API
 │   ├── lib/                 # api-client (fetch wrapper) and api (data functions)
 │   ├── pages/               # screens
 │   └── types/               # shared TypeScript types
+├── reference/               # scratch space for form/mockup references (not shipped)
 ├── Dockerfile               # 3-stage build: SPA -> API -> runtime
 └── docker-compose.yml       # app + postgres
 ```
@@ -383,6 +386,127 @@ Uploaded files are never publicly reachable. Each file is served through a
 signed URL that expires after one hour, and the server re-checks that the person
 asking is allowed to see that specific file. ID photos and signatures are
 restricted to their owner and administrators.
+
+---
+
+## Adding a form
+
+Forms in this app are deliberately simple. There is no form library in use:
+`react-hook-form` and `zod` are installed but not referenced anywhere, and there
+is no `Form`/`FormField` wrapper. Every form is a plain React component that:
+
+- keeps its fields in a single `useState` object with a `set(key, value)` helper,
+- renders controlled inputs from `src/components/ui/` (`Input`, `Select`,
+  `Textarea`, `Label`, `Button`),
+- validates inline and reports problems with `toast.error(...)` (sonner), and
+- calls a hand-written function in `src/lib/api.ts` that wraps `api.post(...)`.
+
+`src/pages/CreateTicketPage.tsx` is the reference implementation to copy.
+
+### The ICT Inventory Submissions feature
+
+The best end-to-end example of a new form with its own table is the ICT
+inventory submission flow. Replicate it when adding a form:
+
+| Layer | File |
+| --- | --- |
+| Table | `server/src/db/schema.sql` (`ict_inventory_submissions`, ~line 258) |
+| API routes | `server/src/routes/ict.ts` (submissions section, ~line 255) |
+| Route mounting | `server/src/index.ts` (`app.use('/api/ict', ...)`) |
+| Frontend API | `src/lib/api.ts` (`getMySubmissions`, `createInventorySubmission`, ...) |
+| Types | `src/types/types.ts` (`ICTInventorySubmission`) |
+| User page | `src/pages/ICTSubmissionPage.tsx` |
+| Admin review | `src/pages/admin/ICTSubmissionsReviewPage.tsx` |
+| Routing | `src/routes.tsx` |
+| Navigation | `src/components/layouts/MainLayout.tsx` (`NAV_GROUPS`) |
+
+### Step by step
+
+1. **Database.** Add `CREATE TABLE IF NOT EXISTS your_table (...)` to
+   `server/src/db/schema.sql`. The schema is applied on every boot by
+   `runMigrations()` (`server/src/db/migrate.ts`), so it must remain idempotent.
+   Use `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` when adding columns to a table
+   that already exists, `CREATE INDEX IF NOT EXISTS` for indexes, and the
+   `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER` pattern for triggers.
+2. **Types.** Add an interface to `src/types/types.ts`, mirroring the table.
+   Mark columns populated by joins (e.g. submitter name) as optional.
+3. **Server route.** Create `server/src/routes/yourFeature.ts`. Start it with
+   `router.use(apiLimiter, authMiddleware)`, guard privileged routes with
+   `requireRole(...)`, validate the body and return `400` on bad input, and
+   insert using a parameterised tagged template:
+   ```ts
+   const rows = await sql`
+     INSERT INTO your_table (field_a, submitted_by)
+     VALUES (${body.field_a}, ${req.user!.id})
+     RETURNING *
+   `;
+   res.status(201).json(rows[0]);
+   ```
+   Register it in `server/src/index.ts` with
+   `app.use('/api/your-feature', yourFeatureRoutes)`. Note that ESM imports use
+   the `.js` extension.
+4. **Frontend API.** Add `get...`/`create...` functions to `src/lib/api.ts` that
+   call `api.get`/`api.post`.
+5. **Page.** Create `src/pages/YourFormPage.tsx` following
+   `CreateTicketPage.tsx`: wrap it in `MainLayout`, hold fields in one
+   `useState` object, validate on submit, show `toast.success` on success and
+   `toast.error(e.message)` on failure.
+6. **Route + navigation.** Import the page and add a `RouteConfig` entry in
+   `src/routes.tsx`, then add a `NAV_GROUPS` item in
+   `src/components/layouts/MainLayout.tsx` with the `roles` allowed to see it.
+7. **(Optional) Admin review.** For an approval workflow, add an admin page
+   under `src/pages/admin/` modelled on `ICTSubmissionsReviewPage.tsx`.
+
+File uploads (photos, signatures) go through a separate multipart endpoint:
+`src/lib/api.ts` `submitIDRequest` shows the flow (`api.upload('/upload/<bucket>', formData)`
+returns a path that is then sent with the JSON payload), and the server side is
+`server/src/routes/upload.ts` (multer, mime allow-list, 10 MB limit).
+
+---
+
+## Reference folder
+
+The `reference/` folder at the project root is a scratch space for design inputs
+— example forms, mockups, or documents you want to model a new form on. Nothing
+in it is imported by the application, built into the image, or required at
+runtime, so you can add or delete files freely without affecting the app.
+
+**To add a reference**, drop the file(s) into `reference/`:
+
+```bash
+# from the project root
+reference/
+```
+
+You can place any common format there (`.pdf`, `.png`, `.jpg`, `.html`, `.txt`,
+`.docx`, `.xlsx`, `.csv`, ...). To move a file in from elsewhere:
+
+```bash
+# example: copy a downloaded mockup into the folder
+cp ~/Downloads/new-form.png reference/
+```
+
+On Windows PowerShell:
+
+```powershell
+Copy-Item "$HOME\Downloads\new-form.png" reference\
+```
+
+To list what is currently in the folder:
+
+```bash
+ls reference            # macOS/Linux
+```
+
+```powershell
+Get-ChildItem reference  # Windows PowerShell
+```
+
+The folder is not imported by the app, so it is safe to keep design scratch
+files here during development. It is not excluded from the Docker build context
+yet, so if you add large files and want to keep the build lean, add
+`reference` to `.dockerignore`. If you want to version reference files with Git,
+commit the folder; otherwise treat it as local-only working space.
 
 ---
 
