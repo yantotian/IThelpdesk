@@ -111,6 +111,7 @@
     "dompurify": "^3.4.16"
   },
   "overrides": {
-    "braces": "file:./vendor/braces"
+    "braces": "file:./vendor/braces",
+    "source-map-js": "1.2.2"
   }
 }
