@@ -1,8 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { sql } from '../db/index.js';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'ciodesk-secret-key-change-in-production';
+import { getJwtSecret } from '../env.js';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -18,7 +17,7 @@ export interface AuthRequest extends Request {
 export function generateToken(user: { id: string; username: string; role: string }): string {
   return jwt.sign(
     { id: user.id, username: user.username, role: user.role },
-    JWT_SECRET,
+    getJwtSecret(),
     { expiresIn: '7d' }
   );
 }
@@ -32,7 +31,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
 
   const token = authHeader.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; username: string; role: string };
+    const decoded = jwt.verify(token, getJwtSecret()) as { id: string; username: string; role: string };
     const users = await sql`
       SELECT id, username, role, full_name, office, is_active
       FROM users WHERE id = ${decoded.id} LIMIT 1

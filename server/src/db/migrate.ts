@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
 import { sql } from './index.js';
+import { isProduction } from '../env.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -30,12 +31,24 @@ export async function runMigrations(): Promise<void> {
 /** Creates the bootstrap admin account if no user with that username exists. */
 export async function ensureAdminUser(): Promise<void> {
   const username = (process.env.ADMIN_USERNAME || 'admin').toLowerCase();
-  const password = process.env.ADMIN_PASSWORD || 'admin123';
 
   const existing = await sql`SELECT id FROM users WHERE username = ${username} LIMIT 1`;
   if (existing.length > 0) return;
 
-  const hash = await bcrypt.hash(password, 10);
+  // We are about to create the bootstrap admin, so the password actually
+  // matters. Refuse to seed a known/weak one in production; development keeps
+  // the convenient default.
+  const password = process.env.ADMIN_PASSWORD;
+  const weak = !password || password === 'admin123' || password.length < 12;
+  if (isProduction && weak) {
+    throw new Error(
+      '[init] Refusing to create the bootstrap admin with a weak or missing ' +
+        'ADMIN_PASSWORD. Set a value of at least 12 characters before first boot.',
+    );
+  }
+  const resolvedPassword = password || 'admin123';
+
+  const hash = await bcrypt.hash(resolvedPassword, 10);
   await sql`
     INSERT INTO users (username, email, password_hash, full_name, role, is_active)
     VALUES (${username}, ${`${username}@ciodesk.com`}, ${hash}, 'System Administrator', 'sysadmin', true)

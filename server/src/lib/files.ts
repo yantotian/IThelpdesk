@@ -1,6 +1,5 @@
 import crypto from 'crypto';
-
-const SECRET = () => process.env.JWT_SECRET || 'ciodesk-secret-key-change-in-production';
+import { getJwtSecret } from '../env.js';
 
 /** Default lifetime of a signed file URL: 1 hour (matches the old Supabase behaviour). */
 const TTL_SECONDS = 3600;
@@ -19,7 +18,7 @@ const unb64url = (s: string) =>
   Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
 
 function sign(data: string): string {
-  return b64url(crypto.createHmac('sha256', SECRET()).update(data).digest());
+  return b64url(crypto.createHmac('sha256', getJwtSecret()).update(data).digest());
 }
 
 /**

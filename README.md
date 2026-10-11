@@ -183,6 +183,12 @@ Then open **http://localhost:3001**.
 **Change this immediately** after your first sign-in (Profile → Change password),
 or set a different password before the first boot with `ADMIN_PASSWORD` in `.env`.
 
+> In production (`NODE_ENV=production`) the server refuses to boot with a missing
+> or placeholder `JWT_SECRET`, with no `DATABASE_URL`, or — when seeding the
+> first admin — with a weak/missing `ADMIN_PASSWORD` (must be ≥ 12 characters).
+> This is deliberate: it fails closed instead of running with known secrets.
+> Development keeps the convenient defaults above.
+
 ---
 
 ## Environment variables
@@ -197,7 +203,7 @@ or set a different password before the first boot with `ADMIN_PASSWORD` in `.env
 | `POSTGRES_PASSWORD` | `postgres` | Database password. |
 | `POSTGRES_DB` | `helpdesk` | Database name. |
 | `ADMIN_USERNAME` | `admin` | First administrator's username (created on first boot only). |
-| `ADMIN_PASSWORD` | `admin123` | First administrator's password (created on first boot only). |
+| `ADMIN_PASSWORD` | `admin123` | First administrator's password (created on first boot only). **Production requires ≥ 12 characters.** |
 
 ### For a manual run (`/server/.env`)
 
@@ -208,7 +214,7 @@ or set a different password before the first boot with `ADMIN_PASSWORD` in `.env
 | `PORT` | `3001` | Port the API listens on. |
 | `UPLOAD_DIR` | `server/uploads` | Where uploaded files are stored. |
 | `ADMIN_USERNAME` | `admin` | First administrator's username. |
-| `ADMIN_PASSWORD` | `admin123` | First administrator's password. |
+| `ADMIN_PASSWORD` | `admin123` | First administrator's password. **Production requires ≥ 12 characters.** |
 
 ### Optional frontend variable
 
