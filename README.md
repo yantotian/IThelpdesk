@@ -18,6 +18,7 @@ are all contained in this repository.
 - [Environment variables](#environment-variables)
 - [Verifying the install](#verifying-the-install)
 - [Project layout](#project-layout)
+- [Database schema](#database-schema)
 - [Data and backups](#data-and-backups)
 - [Roles](#roles)
 - [Known limitations](#known-limitations)
@@ -272,6 +273,64 @@ cd server && npx tsc --noEmit       # API
 │   └── types/               # shared TypeScript types
 ├── Dockerfile               # 3-stage build: SPA -> API -> runtime
 └── docker-compose.yml       # app + postgres
+```
+
+---
+
+## Database schema
+
+The schema lives in `server/src/db/schema.sql` and is applied automatically on
+boot (it is idempotent, so re-running it is safe). It creates **16 tables** in
+the `public` schema.
+
+### Enums
+
+| Type | Values |
+| --- | --- |
+| `user_role` | `requester`, `technician`, `it_admin`, `sysadmin` |
+| `ticket_status` | `new`, `assigned`, `in_progress`, `resolved`, `on_hold`, `verified`, `closed` |
+| `ticket_priority` | `low`, `medium`, `high`, `critical` |
+
+### Tables
+
+All primary keys are `uuid` (default `gen_random_uuid()`).
+
+| Table | Purpose | Key columns |
+| --- | --- | --- |
+| `users` | Accounts (replaces auth + profiles) | `username`, `email`, `password_hash`, `full_name`, `role`, `office`, `contact`, `is_active` |
+| `categories` | Ticket categories with optional nesting | `name`, `parent_id` → `categories`, `is_active`, `sort_order` |
+| `priority_config` | SLA hours per priority | `priority` (unique), `label`, `sla_hours`, `color` |
+| `tickets` | Helpdesk tickets | `ticket_number` (unique), `requester_id` → `users`, `assigned_to` → `users`, `category_id`, `priority`, `subject`, `description`, `status`, `resolution`, `sla_due_at`, `sla_breached`, `auto_close_at` |
+| `ticket_activities` | Timeline / comments | `ticket_id` → `tickets` (cascade), `actor_id` → `users`, `activity_type`, `content`, `old_value`, `new_value` |
+| `ticket_attachments` | Uploaded files | `ticket_id` → `tickets` (cascade), `uploader_id` → `users`, `file_name`, `file_path`, `file_size`, `mime_type` |
+| `ticket_templates` | Prefilled ticket forms | `name`, `description`, `category_id`, `subcategory_id`, `priority`, `subject`, `body`, `is_active`, `created_by` |
+| `notifications` | In-app notifications | `user_id` → `users` (cascade), `ticket_id` → `tickets`, `type`, `title`, `body`, `is_read` |
+| `system_config` | Runtime settings | `key` (text PK), `value`, `description` |
+| `audit_log` | Admin action history | `actor_id` → `users`, `table_name`, `record_id`, `action`, `old_data` (jsonb), `new_data` (jsonb), `ip_address` |
+| `ict_devices` | ICT inventory (laptops, desktops, printers, routers) | `device_type`, `brand`, `model`, `serial_no`, `asset_tag`, `location`, `assigned_to`, `status`, `cpu`, `gpu`, `ram_gb`, `storage_gb`, `storage_type`, `os`, `purchase_date`, `warranty_until` |
+| `ict_internet` | Internet/ISP subscriptions | `location`, `isp_name`, `plan_name`, `plan_type`, `subscribed_speed_mbps`, `actual_dl_mbps`, `actual_ul_mbps`, `monthly_cost`, `contract_start`, `contract_end`, `router_id` → `ict_devices`, `status` |
+| `speed_test_logs` | Bandwidth test history | `internet_id` → `ict_internet` (cascade), `tested_at`, `dl_mbps`, `ul_mbps`, `latency_ms`, `tested_by` |
+| `device_ticket_links` | Links devices to tickets | `device_id` → `ict_devices`, `ticket_id` → `tickets`, `linked_by`, `note`, `UNIQUE(device_id, ticket_id)` |
+| `ict_inventory_submissions` | Pending user-submitted inventory | `submission_type`, `submitted_by`, `status`, `admin_note`, `reviewed_by`, `reviewed_at`, plus flattened device/internet fields |
+| `id_requests` | Employee ID card requests | `requester_id` → `users`, `office_name`, `full_name`, `id_number`, `position`, `address`, `emergency_name`, `emergency_contact`, `photo_url`, `signature_url`, `status`, `is_paid` |
+
+### Triggers & functions
+
+| Object | Effect |
+| --- | --- |
+| `generate_ticket_number()` | Assigns `TKT-<year>-00001` style numbers on ticket insert |
+| `set_sla_due()` | Sets `sla_due_at` from `priority_config.sla_hours` on insert |
+| `set_auto_close()` | Sets `auto_close_at` (+48h) when a ticket becomes `verified` |
+| `on_ticket_activity_notify()` | Creates notifications on assignment, status change and comment |
+| `update_updated_at()` | Maintains `updated_at` on tickets, users, ict_devices, ict_internet and ticket_templates |
+
+Reference data (categories, priorities, templates, system config) is seeded on
+boot; the seed statements are written so that admin customisations are not
+overwritten. To inspect the schema directly:
+
+```bash
+docker compose exec -T db psql -U postgres -d helpdesk -c "\dt"
+docker compose exec -T db psql -U postgres -d helpdesk -c "\d+ tickets"
 ```
 
 ---
