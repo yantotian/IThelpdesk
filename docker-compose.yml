@@ -11,7 +11,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-helpdesk}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-helpdesk}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -27,7 +31,7 @@ services:
         condition: service_healthy
     ports:
       # host:container — change the left side to ":80" to bind directly.
-      - "${APP_PORT:-8080}:80"
+      - "${APP_PORT:-8880}:80"
     environment:
       NODE_ENV: production
       PORT: 3001
