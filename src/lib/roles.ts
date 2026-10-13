@@ -23,6 +23,7 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, RoleDescription> = {
       'Create and track own tickets',
       'Confirm resolution / reopen tickets',
       'Submit ID requests and ICT inventory information',
+      'Request venue bookings for a single day or a multi-day period',
     ],
   },
   technician: {
@@ -32,6 +33,7 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, RoleDescription> = {
       'View all tickets and the Kanban board',
       'Work assigned tickets and update status',
       'Review inventory submissions',
+      'Request venue bookings for a single day or a multi-day period',
     ],
   },
   it_admin: {
@@ -41,6 +43,7 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, RoleDescription> = {
       'Everything a Technician can do',
       'View reports and inventory dashboards',
       'Manage categories, priorities, templates, and ID/ICT requests',
+      'Request and approve venue bookings, and manage venues',
       'Read system configuration and audit log',
     ],
   },
@@ -51,6 +54,7 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, RoleDescription> = {
       'Everything an IT Admin can do',
       'Manage registered users and assign roles',
       'Deactivate or delete user accounts',
+      'Request and approve venue bookings, and manage venues',
       'Edit system configuration and delete tickets',
     ],
   },

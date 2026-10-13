@@ -69,22 +69,29 @@ function BookingForm({
   const [f, setF] = useState({
     title: '',
     purpose: '',
+    duration: 'times' as 'times' | 'all_day' | 'multi_day',
     booking_date: date,
     end_date: date,
-    is_all_day: false,
     start_time: '09:00',
     end_time: '10:00',
   });
   const set = (k: string, v: unknown) => setF((p) => ({ ...p, [k]: v }));
 
-  // A booking spanning more than one day occupies whole days; start/end times
-  // only apply to a single-day booking.
-  const isMultiDay = f.end_date > f.booking_date;
-  const isAllDay = f.is_all_day || isMultiDay;
+  // 'Multiple Days' books whole days across a start→end period; the other two
+  // choices are single-day. Start/end times only apply to 'Specific time'.
+  const isMultiDay = f.duration === 'multi_day';
+  const isAllDay = f.duration === 'all_day' || isMultiDay;
 
-  // Keep the end date on/after the start date when the start moves later.
+  // Keep the end date on/after the start date whenever either changes.
   const setStartDate = (v: string) =>
     setF((p) => ({ ...p, booking_date: v, end_date: p.end_date < v ? v : p.end_date }));
+
+  const setDuration = (v: 'times' | 'all_day' | 'multi_day') =>
+    setF((p) => ({
+      ...p,
+      duration: v,
+      end_date: v === 'multi_day' && p.end_date < p.booking_date ? p.booking_date : p.end_date,
+    }));
 
   const handleSubmit = () => {
     if (!f.title.trim()) {
@@ -92,14 +99,14 @@ function BookingForm({
       return;
     }
     if (!f.booking_date) {
-      toast.error('Please choose a start date');
+      toast.error('Please choose a date');
       return;
     }
-    if (!f.end_date || f.end_date < f.booking_date) {
+    if (isMultiDay && (!f.end_date || f.end_date < f.booking_date)) {
       toast.error('End date cannot be before start date');
       return;
     }
-    if (!isAllDay && f.end_time <= f.start_time) {
+    if (f.duration === 'times' && f.end_time <= f.start_time) {
       toast.error('End time must be after start time');
       return;
     }
@@ -107,10 +114,10 @@ function BookingForm({
       title: f.title.trim(),
       purpose: f.purpose || null,
       booking_date: f.booking_date,
-      end_date: f.end_date,
+      end_date: isMultiDay ? f.end_date : f.booking_date,
       is_all_day: isAllDay,
-      start_time: isAllDay ? null : f.start_time,
-      end_time: isAllDay ? null : f.end_time,
+      start_time: f.duration === 'times' ? f.start_time : null,
+      end_time: f.duration === 'times' ? f.end_time : null,
     });
   };
 
@@ -141,75 +148,80 @@ function BookingForm({
       </div>
 
       <div className="space-y-1">
-        <Label className="text-xs font-semibold">Booking period *</Label>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label className="mono text-[10px] text-muted-foreground">START DATE</Label>
-            <Input
-              value={f.booking_date}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="h-9 text-sm"
-              type="date"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="mono text-[10px] text-muted-foreground">END DATE</Label>
-            <Input
-              value={f.end_date}
-              min={f.booking_date}
-              onChange={(e) => set('end_date', e.target.value)}
-              className="h-9 text-sm"
-              type="date"
-            />
-          </div>
-        </div>
+        <Label className="text-xs font-semibold">Duration</Label>
+        <Select
+          value={f.duration}
+          onValueChange={(v) => setDuration(v as 'times' | 'all_day' | 'multi_day')}
+        >
+          <SelectTrigger className="h-9 text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="times">Specific time</SelectItem>
+            <SelectItem value="all_day">All day</SelectItem>
+            <SelectItem value="multi_day">Multiple Days</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {isMultiDay ? (
-        <p className="mono text-[10px] text-muted-foreground tracking-widest">
-          MULTI-DAY BOOKING · ALL DAY
-        </p>
-      ) : (
-        <>
-          <div className="space-y-1">
-            <Label className="text-xs font-semibold">Duration</Label>
-            <Select
-              value={f.is_all_day ? 'all_day' : 'times'}
-              onValueChange={(v) => set('is_all_day', v === 'all_day')}
-            >
-              <SelectTrigger className="h-9 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="times">Specific time</SelectItem>
-                <SelectItem value="all_day">All day</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {!f.is_all_day && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold">Start</Label>
-                <Input
-                  value={f.start_time}
-                  onChange={(e) => set('start_time', e.target.value)}
-                  className="h-9 text-sm"
-                  type="time"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold">End</Label>
-                <Input
-                  value={f.end_time}
-                  onChange={(e) => set('end_time', e.target.value)}
-                  className="h-9 text-sm"
-                  type="time"
-                />
-              </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold">Date range *</Label>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="mono text-[10px] text-muted-foreground">START DATE</Label>
+              <Input
+                value={f.booking_date}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="h-9 text-sm"
+                type="date"
+              />
             </div>
-          )}
-        </>
+            <div className="space-y-1">
+              <Label className="mono text-[10px] text-muted-foreground">END DATE</Label>
+              <Input
+                value={f.end_date}
+                min={f.booking_date}
+                onChange={(e) => set('end_date', e.target.value)}
+                className="h-9 text-sm"
+                type="date"
+              />
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold">Date *</Label>
+          <Input
+            value={f.booking_date}
+            onChange={(e) => set('booking_date', e.target.value)}
+            className="h-9 text-sm"
+            type="date"
+          />
+        </div>
+      )}
+
+      {f.duration === 'times' && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Start</Label>
+            <Input
+              value={f.start_time}
+              onChange={(e) => set('start_time', e.target.value)}
+              className="h-9 text-sm"
+              type="time"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">End</Label>
+            <Input
+              value={f.end_time}
+              onChange={(e) => set('end_time', e.target.value)}
+              className="h-9 text-sm"
+              type="time"
+            />
+          </div>
+        </div>
       )}
 
       <div className="flex gap-2 pt-1">
@@ -342,7 +354,8 @@ export default function VenueBookingPage() {
             <div className="laser-line mb-2 w-24" />
             <h1 className="text-xl font-bold text-foreground">Venue Booking</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Reserve a venue. Requests are reviewed and approved by an administrator.
+              Reserve a venue for a single day or a multi-day period. Any signed-in user can
+              request a booking; an administrator reviews and approves it.
             </p>
           </div>
           <div className="flex gap-2">
@@ -354,6 +367,8 @@ export default function VenueBookingPage() {
             >
               <RefreshCw className="w-3 h-3 mr-1" /> Refresh
             </Button>
+            {/* Any signed-in role (requester, technician, admin) may request a
+                booking; admins use the same period date selector. */}
             {!showForm && (
               <Button
                 size="sm"

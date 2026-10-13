@@ -20,7 +20,7 @@ const TYPE_ICON: Record<AppNotification['type'], React.ReactNode> = {
 };
 
 export default function NotificationBell() {
-  const { profile } = useAuth();
+  const { profile, role } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -71,7 +71,10 @@ export default function NotificationBell() {
       navigate(`/tickets/${n.ticket_id}`);
       setOpen(false);
     } else if (n.type === 'booking') {
-      navigate('/venues');
+      // Admins act on booking requests, so send them to the approvals queue;
+      // requesters go to the venue calendar to see their own bookings.
+      const isAdmin = role === 'it_admin' || role === 'sysadmin';
+      navigate(isAdmin ? '/admin/venue-bookings' : '/venues');
       setOpen(false);
     }
   };

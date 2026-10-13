@@ -17,11 +17,6 @@ export function parseDateKey(key: string): Date {
   return new Date(y, m - 1, d);
 }
 
-interface DayOccupancy {
-  approved: number;
-  pending: number;
-}
-
 interface VenueCalendarProps {
   month: Date;
   onMonthChange: (d: Date) => void;
@@ -40,9 +35,11 @@ export default function VenueCalendar({
   const year = month.getFullYear();
   const monthIndex = month.getMonth();
 
-  const occupancy = new Map<string, DayOccupancy>();
+  // Only administrator-approved bookings make a day count as occupied.
+  // Pending requests are intentionally excluded from the calendar.
+  const occupancy = new Map<string, number>();
   for (const b of bookings) {
-    if (b.status !== 'approved' && b.status !== 'pending') continue;
+    if (b.status !== 'approved') continue;
     const startKey = b.booking_date.slice(0, 10);
     const endKey = (b.end_date ?? b.booking_date).slice(0, 10);
     let cursor = parseDateKey(startKey);
@@ -51,10 +48,7 @@ export default function VenueCalendar({
     // so malformed ranges can never loop forever.
     for (let guard = 0; cursor <= last && guard < 366; guard += 1) {
       const key = toDateKey(cursor);
-      const current = occupancy.get(key) ?? { approved: 0, pending: 0 };
-      if (b.status === 'approved') current.approved += 1;
-      else current.pending += 1;
-      occupancy.set(key, current);
+      occupancy.set(key, (occupancy.get(key) ?? 0) + 1);
       cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 1);
     }
   }
@@ -116,7 +110,6 @@ export default function VenueCalendar({
           const occ = occupancy.get(key);
           const isSelected = key === selectedDate;
           const isToday = key === todayKey;
-
           return (
             <button
               key={key}
@@ -136,15 +129,12 @@ export default function VenueCalendar({
                 >
                   {day}
                 </span>
-                {occ && occ.approved + occ.pending > 0 && (
-                  <span className="mono text-[9px] text-muted-foreground">
-                    {occ.approved + occ.pending}
-                  </span>
-                )}
+                {occ ? (
+                  <span className="mono text-[9px] text-muted-foreground">{occ}</span>
+                ) : null}
               </div>
               <div className="flex gap-1 mt-1.5">
-                {occ?.approved ? <span className="w-2 h-2 bg-primary" title="Occupied" /> : null}
-                {occ?.pending ? <span className="w-2 h-2 bg-yellow-500" title="Pending approval" /> : null}
+                {occ ? <span className="w-2 h-2 bg-primary" title="Occupied" /> : null}
               </div>
             </button>
           );
@@ -155,9 +145,6 @@ export default function VenueCalendar({
       <div className="flex items-center gap-4 px-3 py-2 border-t border-border">
         <span className="flex items-center gap-1.5 mono text-[9px] text-muted-foreground tracking-widest">
           <span className="w-2 h-2 bg-primary inline-block" /> OCCUPIED
-        </span>
-        <span className="flex items-center gap-1.5 mono text-[9px] text-muted-foreground tracking-widest">
-          <span className="w-2 h-2 bg-yellow-500 inline-block" /> PENDING
         </span>
         <span className="flex items-center gap-1.5 mono text-[9px] text-muted-foreground tracking-widest">
           <span className="w-2 h-2 border border-border inline-block" /> FREE

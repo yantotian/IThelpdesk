@@ -8,6 +8,10 @@ router.use(apiLimiter, authMiddleware);
 
 const ADMIN_ROLES = ['it_admin', 'sysadmin'];
 
+// Every signed-in role may request a venue booking (single day or multi-day
+// period); admins additionally review and manage bookings.
+const REQUEST_ROLES = ['requester', 'technician', 'it_admin', 'sysadmin'];
+
 // ── Venues (managed by it_admin / sysadmin) ──────────────────────────────────
 
 router.get('/', async (req: AuthRequest, res) => {
@@ -159,10 +163,10 @@ router.get('/bookings', async (req: AuthRequest, res) => {
   }
 });
 
-// Create a booking. Serialised per venue so two concurrent requests cannot both
-// claim the same slot: the transaction locks the venue row, re-checks overlap,
-// then inserts.
-router.post('/bookings', async (req: AuthRequest, res) => {
+// Create a booking. Open to every signed-in role (requester, technician, admin).
+// Serialised per venue so two concurrent requests cannot both claim the same
+// slot: the transaction locks the venue row, re-checks overlap, then inserts.
+router.post('/bookings', requireRole(...REQUEST_ROLES), async (req: AuthRequest, res) => {
   const b = req.body;
   if (
     !b.venue_id ||

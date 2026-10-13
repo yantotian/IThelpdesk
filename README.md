@@ -381,10 +381,10 @@ Permissions are enforced on the server, not just hidden in the interface.
 
 | Role | Can do |
 | --- | --- |
-| `requester` | Raise tickets, comment on their own, view their own ID requests. |
-| `technician` | Everything a requester can, plus view assigned tickets, change status, add comments and attachments. |
-| `it_admin` | Everything above, plus manage users (except roles), categories, priorities, templates, SLA policy, ICT inventory and ID request approval. |
-| `sysadmin` | Full access, including assigning roles and reading the audit log. |
+| `requester` | Raise tickets, comment on their own, view their own ID requests, and request venue bookings for a single day or a multi-day period. |
+| `technician` | Everything a requester can, plus view assigned tickets, change status, add comments and attachments, and request venue bookings. |
+| `it_admin` | Everything above, plus manage users (except roles), categories, priorities, templates, SLA policy, ICT inventory and ID request approval, approve venue bookings and manage venues. |
+| `sysadmin` | Full access, including assigning roles and reading the audit log, and managing venues and bookings. |
 
 Only a `sysadmin` can grant or change the `sysadmin` role.
 
