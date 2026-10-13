@@ -116,6 +116,18 @@ To serve it over HTTPS on a public domain, put it behind a TLS-terminating
 reverse proxy (Caddy, Traefik, or an existing nginx) that forwards to
 `127.0.0.1:8080`, or add your own certificates to `docker/nginx.conf`.
 
+Alternatively, an optional **Cloudflare Tunnel** service is included and can be
+started with the `tunnel` profile. It publishes the app without opening any
+inbound port. Set `TUNNEL_TOKEN` in `.env`, point the tunnel's public hostname at
+`http://app:80` in the Cloudflare Zero Trust dashboard, then run:
+
+```bash
+docker compose --profile tunnel up -d
+```
+
+Omit the `--profile tunnel` flag and the `cloudflared` container simply does not
+start, so the default two-service stack is unaffected.
+
 ---
 
 ## Running without Docker
@@ -204,6 +216,7 @@ or set a different password before the first boot with `ADMIN_PASSWORD` in `.env
 | `POSTGRES_DB` | `helpdesk` | Database name. |
 | `ADMIN_USERNAME` | `admin` | First administrator's username (created on first boot only). |
 | `ADMIN_PASSWORD` | `admin123` | First administrator's password (created on first boot only). **Production requires ≥ 12 characters.** |
+| `TUNNEL_TOKEN` | *(empty)* | Cloudflare Tunnel token. Only needed when starting with the `tunnel` profile. |
 
 ### For a manual run (`/server/.env`)
 

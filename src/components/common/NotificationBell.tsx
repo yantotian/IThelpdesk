@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, BellRing, CheckCheck, X, AlertTriangle, UserCheck, MessageSquare, RefreshCw, Info } from 'lucide-react';
+import { Bell, BellRing, CheckCheck, X, AlertTriangle, UserCheck, MessageSquare, RefreshCw, Info, CalendarCheck } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getNotifications, getUnreadCount,
@@ -16,6 +16,7 @@ const TYPE_ICON: Record<AppNotification['type'], React.ReactNode> = {
   comment:       <MessageSquare className="w-3.5 h-3.5 text-green-400 shrink-0" />,
   status_change: <RefreshCw className="w-3.5 h-3.5 text-yellow-400 shrink-0" />,
   system:        <Info className="w-3.5 h-3.5 text-muted-foreground shrink-0" />,
+  booking:       <CalendarCheck className="w-3.5 h-3.5 text-primary shrink-0" />,
 };
 
 export default function NotificationBell() {
@@ -68,6 +69,9 @@ export default function NotificationBell() {
     }
     if (n.ticket_id) {
       navigate(`/tickets/${n.ticket_id}`);
+      setOpen(false);
+    } else if (n.type === 'booking') {
+      navigate('/venues');
       setOpen(false);
     }
   };

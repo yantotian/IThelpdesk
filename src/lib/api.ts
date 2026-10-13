@@ -451,3 +451,65 @@ export interface SearchResult {
 export async function globalSearch(q: string): Promise<SearchResult[]> {
   return api.get<SearchResult[]>(`/search?q=${encodeURIComponent(q)}`);
 }
+
+// ──────────────────────────────────────────────
+// Venues & Venue Bookings
+// ──────────────────────────────────────────────
+import type { Venue, VenueBooking } from '@/types/types';
+
+export async function getVenues(): Promise<Venue[]> {
+  return api.get<Venue[]>('/venues');
+}
+
+export async function createVenue(payload: Partial<Venue>) {
+  return api.post<Venue>('/venues', payload);
+}
+
+export async function updateVenue(id: string, payload: Partial<Venue>) {
+  return api.put<Venue>(`/venues/${id}`, payload);
+}
+
+export async function deleteVenue(id: string) {
+  return api.delete(`/venues/${id}`);
+}
+
+export interface VenueBookingFilters {
+  venue_id?: string;
+  from?: string;
+  to?: string;
+  status?: string;
+}
+
+export async function getVenueBookings(filters: VenueBookingFilters = {}): Promise<VenueBooking[]> {
+  const params = new URLSearchParams();
+  if (filters.venue_id) params.set('venue_id', filters.venue_id);
+  if (filters.from) params.set('from', filters.from);
+  if (filters.to) params.set('to', filters.to);
+  if (filters.status) params.set('status', filters.status);
+  const query = params.toString();
+  return api.get<VenueBooking[]>(`/venues/bookings${query ? `?${query}` : ''}`);
+}
+
+export async function createVenueBooking(payload: {
+  venue_id: string;
+  title: string;
+  purpose?: string | null;
+  booking_date: string;
+  is_all_day: boolean;
+  start_time?: string | null;
+  end_time?: string | null;
+}) {
+  return api.post<VenueBooking>('/venues/bookings', payload);
+}
+
+export async function cancelVenueBooking(id: string) {
+  return api.delete<VenueBooking>(`/venues/bookings/${id}`);
+}
+
+export async function reviewVenueBooking(
+  id: string,
+  status: 'approved' | 'rejected',
+  admin_note?: string
+) {
+  return api.put<VenueBooking>(`/venues/bookings/${id}/review`, { status, admin_note });
+}

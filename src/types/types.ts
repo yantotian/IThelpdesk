@@ -136,7 +136,7 @@ export interface AppNotification {
   id: string;
   user_id: string;
   ticket_id: string | null;
-  type: 'sla_breach' | 'assignment' | 'comment' | 'status_change' | 'system';
+  type: 'sla_breach' | 'assignment' | 'comment' | 'status_change' | 'system' | 'booking';
   title: string;
   body: string | null;
   is_read: boolean;
@@ -310,6 +310,44 @@ export interface ICTInventorySubmission {
   notes?: string | null;
   // joined
   submitter?: Pick<Profile, 'id' | 'full_name' | 'username'>;
+  reviewer?: Pick<Profile, 'id' | 'full_name' | 'username'>;
+}
+
+// ── Venue Booking ─────────────────────────────────────────────────────────────
+export interface Venue {
+  id: string;
+  name: string;
+  location: string | null;
+  capacity: number | null;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  // joined
+  active_bookings?: number;
+}
+
+export type VenueBookingStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+
+export interface VenueBooking {
+  id: string;
+  venue_id: string;
+  booked_by: string | null;
+  title: string;
+  purpose: string | null;
+  booking_date: string;
+  is_all_day: boolean;
+  start_time: string | null;
+  end_time: string | null;
+  status: VenueBookingStatus;
+  admin_note: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  // joined
+  venue?: Pick<Venue, 'id' | 'name' | 'location'>;
+  booker?: Pick<Profile, 'id' | 'full_name' | 'username'>;
   reviewer?: Pick<Profile, 'id' | 'full_name' | 'username'>;
 }
 

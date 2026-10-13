@@ -298,6 +298,64 @@ CREATE TABLE IF NOT EXISTS ict_inventory_submissions (
   notes text
 );
 
+-- Venues (bookable rooms/facilities, administered by it_admin/sysadmin)
+CREATE TABLE IF NOT EXISTS venues (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  location text,
+  capacity integer,
+  description text,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_venues_is_active ON venues(is_active);
+
+-- Venue bookings (whole-day or a time range within a day)
+CREATE TABLE IF NOT EXISTS venue_bookings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  venue_id uuid NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
+  booked_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  title text NOT NULL,
+  purpose text,
+  booking_date date NOT NULL,
+  is_all_day boolean NOT NULL DEFAULT false,
+  start_time time,
+  end_time time,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','cancelled')),
+  admin_note text,
+  reviewed_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  reviewed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_venue_bookings_venue_date ON venue_bookings(venue_id, booking_date);
+CREATE INDEX IF NOT EXISTS idx_venue_bookings_status ON venue_bookings(status);
+
+-- Extend the notification type union to cover venue bookings.
+-- The original constraint was defined inline (Postgres named it
+-- notifications_type_check), so drop-and-add is the idempotent way to widen it.
+DO $$ BEGIN
+  ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
+  ALTER TABLE notifications ADD CONSTRAINT notifications_type_check
+    CHECK (type IN ('sla_breach','assignment','comment','status_change','system','booking'));
+END $$;
+
+-- Seed: example venues. Admin-customisable, so just create a small starting set
+-- once; guarded with NOT EXISTS because `venues` has no unique constraint on name.
+INSERT INTO venues (name, location, capacity, description)
+SELECT v.name, v.location, v.capacity, v.description
+FROM (VALUES
+  ('Conference Room A', 'Main Building, 2nd Floor', 12, 'Board room with projector and video conferencing'),
+  ('Training Room', 'Main Building, 3rd Floor', 30, 'Classroom setup with workstations'),
+  ('Multi-Purpose Hall', 'Annex Building, Ground Floor', 100, 'Large hall for events and assemblies')
+) AS v(name, location, capacity, description)
+WHERE NOT EXISTS (
+  SELECT 1 FROM venues x WHERE x.name = v.name
+);
+
 -- Ticket number sequence
 CREATE SEQUENCE IF NOT EXISTS ticket_seq START 1;
 
@@ -347,6 +405,14 @@ CREATE TRIGGER trg_ict_internet_updated_at BEFORE UPDATE ON ict_internet
 
 DROP TRIGGER IF EXISTS trg_ticket_templates_updated_at ON ticket_templates;
 CREATE TRIGGER trg_ticket_templates_updated_at BEFORE UPDATE ON ticket_templates
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS trg_venues_updated_at ON venues;
+CREATE TRIGGER trg_venues_updated_at BEFORE UPDATE ON venues
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS trg_venue_bookings_updated_at ON venue_bookings;
+CREATE TRIGGER trg_venue_bookings_updated_at BEFORE UPDATE ON venue_bookings
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- Auto-set SLA due date on ticket insert
