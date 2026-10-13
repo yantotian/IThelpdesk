@@ -79,7 +79,7 @@ docker compose up -d
 The first start takes a few minutes because it builds the frontend and API
 images. Watch it happen with `docker compose logs -f app`.
 
-**4. Open the app** at **http://localhost:8080** and log in with the default
+**4. Open the app** at **http://localhost:8880** and log in with the default
 credentials below.
 
 You do **not** need to create the database or import a schema — the app creates
@@ -103,18 +103,17 @@ creates the first administrator automatically on first boot.
 The same `docker compose` file is all you need on any Linux server with Docker
 installed.
 
-```bash
-git clone <your-repo-url> ciodesk && cd ciodesk
-cp .env.example .env      # then set JWT_SECRET
 docker compose up -d
 ```
 
-The app will be published on port 8080 of that server. To change the port, set
-`APP_PORT` in `.env` (for example `APP_PORT=80`).
+The app will be published on port 8880 of that server (or set `APP_PORT` in `.env`,
+for example `APP_PORT=80`). Port 8880 is the default; change it if you need a
+different host port. The internal container port is always 80 (nginx).
 
 To serve it over HTTPS on a public domain, put it behind a TLS-terminating
 reverse proxy (Caddy, Traefik, or an existing nginx) that forwards to
-`127.0.0.1:8080`, or add your own certificates to `docker/nginx.conf`.
+`127.0.0.1:${APP_PORT:-8880}`, or add your own certificates to
+`docker/nginx.conf`.
 
 ---
 
@@ -198,7 +197,7 @@ or set a different password before the first boot with `ADMIN_PASSWORD` in `.env
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `JWT_SECRET` | *(required)* | Signs session tokens. Set a long random value. |
-| `APP_PORT` | `8080` | Port the app is published on. |
+| `APP_PORT` | `8880` | Port the app is published on. |
 | `POSTGRES_USER` | `postgres` | Database user. |
 | `POSTGRES_PASSWORD` | `postgres` | Database password. |
 | `POSTGRES_DB` | `helpdesk` | Database name. |

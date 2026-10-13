@@ -51,7 +51,7 @@ export default defineConfig({
     // /api/files/<signed-token>, which the Express API authorizes.
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: `http://localhost:${process.env.APP_PORT || 3001}`,
         changeOrigin: true,
       },
     },

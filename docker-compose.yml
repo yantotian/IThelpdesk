@@ -2,7 +2,7 @@ name: ciodesk
 
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -10,6 +10,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-helpdesk}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command: ["postgres", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
     healthcheck:
       test:
         [
@@ -21,6 +23,7 @@ services:
       retries: 12
       start_period: 10s
 
+  # Production service: built assets, nginx, optimized for deployment
   app:
     build:
       context: .
@@ -29,8 +32,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
-      # host:container — change the left side to ":80" to bind directly.
       - "${APP_PORT:-8880}:80"
     environment:
       NODE_ENV: production
@@ -38,16 +42,109 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-helpdesk}
       DATABASE_WAIT_HOST: db
       DATABASE_WAIT_PORT: 5432
-      # CHANGE THIS. Sessions are signed with it; a weak/known value lets anyone
-      # forge a token. Generate one with:  openssl rand -base64 48
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env before starting}
       UPLOAD_DIR: /app/uploads
-      # Bootstrap sysadmin, created on first boot only.
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
     volumes:
       - uploads:/app/uploads
 
+  # Development service: source-mounted for hot-reloading, uses tsx watch
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ciodesk-dev
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3000:80"       # React dev server
+      - "3001:3001"  # API with hot-reload
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-helpdesk}
+      DATABASE_WAIT_HOST: db
+      DATABASE_WAIT_PORT: 5432
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env before starting}
+      UPLOAD_DIR: /app/uploads
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+    volumes:
+      # Mount source without hiding the runtime image and entrypoint.
+      - ./src:/app/src:cached
+      - uploads:/app/uploads
+    entrypoint: ["/app/entrypoint.sh"]
+    command: ["dev"]
+
+  # Redis for caching and background job queue
+  redis:
+    image: redis@sha256:4fa24486b8bcca8eec45ee0eb166edc674795e53a2b53d1a9ef263eecebaac85
+    entrypoint: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-redispassword}"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redispassword}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # Mailhog for email testing and preview
+  mailhog:
+    image: axllent/mailpit@sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    ports:
+      - "127.0.0.1:8025:8025"   # Email UI
+      - "127.0.0.1:1025:1025"   # SMTP endpoint
+
+  # PgAdmin for PostgreSQL database management
+  pgadmin:
+    image: dpage/pgadmin4@sha256:8a68677a97b8c8d1427dc915672a26d2c4a04376916a68256f53d669d6171be7
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "8081:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost/misc/ping')"]
+      interval: 10s
+      timeout: 15s
+      retries: 12
+      start_period: 30s
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
 volumes:
   postgres_data:
+  redis_data:
+  pgadmin_data:
   uploads:
+
+
+
+
+
+
+
+
+
+
+
+
