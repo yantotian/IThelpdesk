@@ -20,6 +20,7 @@ import {
 import { toast } from 'sonner';
 import { getVenues, getVenueBookings, reviewVenueBooking } from '@/lib/api';
 import type { Venue, VenueBooking, VenueBookingStatus } from '@/types/types';
+import { formatDateRange } from '@/lib/utils';
 import { RefreshCw, CheckCircle, XCircle, CalendarDays, MapPin } from 'lucide-react';
 
 function StatusBadge({ status }: { status: VenueBookingStatus }) {
@@ -209,7 +210,7 @@ export default function VenueBookingsReviewPage() {
                         {b.venue?.name ?? 'Venue'}
                       </span>
                       <span>
-                        {b.booking_date.slice(0, 10)} · {timeLabel(b)}
+                        {formatDateRange(b.booking_date, b.end_date)} · {timeLabel(b)}
                       </span>
                       {b.booker?.full_name || b.booker?.username ? (
                         <span>by {b.booker.full_name || b.booker.username}</span>

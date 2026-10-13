@@ -494,7 +494,10 @@ export async function createVenueBooking(payload: {
   venue_id: string;
   title: string;
   purpose?: string | null;
+  /** Period start (inclusive). */
   booking_date: string;
+  /** Period end (inclusive). Equals booking_date for a single-day booking. */
+  end_date: string;
   is_all_day: boolean;
   start_time?: string | null;
   end_time?: string | null;

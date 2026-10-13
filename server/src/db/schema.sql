@@ -312,7 +312,7 @@ CREATE TABLE IF NOT EXISTS venues (
 
 CREATE INDEX IF NOT EXISTS idx_venues_is_active ON venues(is_active);
 
--- Venue bookings (whole-day or a time range within a day)
+-- Venue bookings (a single day, or a multi-day period booked all-day)
 CREATE TABLE IF NOT EXISTS venue_bookings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   venue_id uuid NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
@@ -320,6 +320,7 @@ CREATE TABLE IF NOT EXISTS venue_bookings (
   title text NOT NULL,
   purpose text,
   booking_date date NOT NULL,
+  end_date date NOT NULL,
   is_all_day boolean NOT NULL DEFAULT false,
   start_time time,
   end_time time,
@@ -331,7 +332,20 @@ CREATE TABLE IF NOT EXISTS venue_bookings (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_venue_bookings_venue_date ON venue_bookings(venue_id, booking_date);
+-- Migration for databases created before bookings supported a date period:
+-- existing single-day bookings become a one-day period.
+ALTER TABLE venue_bookings ADD COLUMN IF NOT EXISTS end_date date;
+UPDATE venue_bookings SET end_date = booking_date WHERE end_date IS NULL;
+ALTER TABLE venue_bookings ALTER COLUMN end_date SET NOT NULL;
+
+-- A booking's period must not end before it starts.
+DO $$ BEGIN
+  ALTER TABLE venue_bookings DROP CONSTRAINT IF EXISTS venue_bookings_date_range_check;
+  ALTER TABLE venue_bookings ADD CONSTRAINT venue_bookings_date_range_check
+    CHECK (end_date >= booking_date);
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_venue_bookings_venue_date ON venue_bookings(venue_id, booking_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_venue_bookings_status ON venue_bookings(status);
 
 -- Extend the notification type union to cover venue bookings.

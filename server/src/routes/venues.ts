@@ -117,10 +117,12 @@ router.get('/bookings', async (req: AuthRequest, res) => {
       conditions.push(`b.venue_id = $${params.length}::uuid`);
     }
     if (from) {
+      // Overlap test: the booking's period must reach on/after `from`.
       params.push(String(from));
-      conditions.push(`b.booking_date >= $${params.length}::date`);
+      conditions.push(`b.end_date >= $${params.length}::date`);
     }
     if (to) {
+      // Overlap test: the booking's period must start on/before `to`.
       params.push(String(to));
       conditions.push(`b.booking_date <= $${params.length}::date`);
     }
@@ -162,12 +164,25 @@ router.get('/bookings', async (req: AuthRequest, res) => {
 // then inserts.
 router.post('/bookings', async (req: AuthRequest, res) => {
   const b = req.body;
-  if (!b.venue_id || !b.booking_date || !b.title || !String(b.title).trim()) {
-    res.status(400).json({ error: 'Venue, date and title are required' });
+  if (
+    !b.venue_id ||
+    !b.booking_date ||
+    !b.end_date ||
+    !b.title ||
+    !String(b.title).trim()
+  ) {
+    res.status(400).json({ error: 'Venue, start date, end date and title are required' });
+    return;
+  }
+  if (String(b.end_date) < String(b.booking_date)) {
+    res.status(400).json({ error: 'End date cannot be before start date' });
     return;
   }
 
-  const is_all_day = !!b.is_all_day;
+  // A booking that spans more than one day occupies whole days; start/end times
+  // only apply to a single-day booking.
+  const is_multi_day = String(b.end_date) !== String(b.booking_date);
+  const is_all_day = !!b.is_all_day || is_multi_day;
   let start_time: string | null = null;
   let end_time: string | null = null;
   if (!is_all_day) {
@@ -194,8 +209,9 @@ router.post('/bookings', async (req: AuthRequest, res) => {
       const conflicts = await tx`
         SELECT id FROM venue_bookings
         WHERE venue_id = ${b.venue_id}::uuid
-          AND booking_date = ${b.booking_date}::date
           AND status IN ('pending','approved')
+          AND booking_date <= ${b.end_date}::date
+          AND end_date >= ${b.booking_date}::date
           AND (
             is_all_day = true
             OR ${is_all_day}::boolean = true
@@ -211,11 +227,11 @@ router.post('/bookings', async (req: AuthRequest, res) => {
 
       const rows = await tx`
         INSERT INTO venue_bookings
-          (venue_id, booked_by, title, purpose, booking_date, is_all_day, start_time, end_time)
+          (venue_id, booked_by, title, purpose, booking_date, end_date, is_all_day, start_time, end_time)
         VALUES
           (${b.venue_id}::uuid, ${req.user!.id}::uuid, ${String(b.title).trim()},
-           ${b.purpose || null}, ${b.booking_date}::date, ${is_all_day},
-           ${start_time}::time, ${end_time}::time)
+           ${b.purpose || null}, ${b.booking_date}::date, ${b.end_date}::date,
+           ${is_all_day}, ${start_time}::time, ${end_time}::time)
         RETURNING *
       `;
       return { booking: rows[0], venue: venues[0] };
@@ -237,11 +253,12 @@ router.post('/bookings', async (req: AuthRequest, res) => {
 
     const { booking, venue } = outcome;
     const bookerName = req.user!.full_name || req.user!.username;
+    const dateLabel = is_multi_day ? `${b.booking_date} to ${b.end_date}` : `${b.booking_date}`;
     const label = is_all_day ? 'all day' : `${start_time}–${end_time}`;
     await sql`
       INSERT INTO notifications (user_id, ticket_id, type, title, body)
       SELECT u.id, NULL, 'booking', 'New venue booking request',
-        ${`${bookerName} requested ${venue.name} on ${b.booking_date} (${label})`}
+        ${`${bookerName} requested ${venue.name} for ${dateLabel} (${label})`}
       FROM users u
       WHERE u.role IN ('it_admin','sysadmin') AND u.is_active = true AND u.id <> ${req.user!.id}::uuid
     `;
@@ -315,9 +332,10 @@ router.put('/bookings/:id/review', requireRole(...ADMIN_ROLES), async (req: Auth
       const conflicts = await sql`
         SELECT id FROM venue_bookings
         WHERE venue_id = ${booking.venue_id}::uuid
-          AND booking_date = ${booking.booking_date}::date
           AND status = 'approved'
           AND id <> ${id}::uuid
+          AND booking_date <= ${booking.end_date}::date
+          AND end_date >= ${booking.booking_date}::date
           AND (
             is_all_day = true
             OR ${booking.is_all_day}::boolean = true
@@ -347,8 +365,12 @@ router.put('/bookings/:id/review', requireRole(...ADMIN_ROLES), async (req: Auth
       const label = booking.is_all_day
         ? 'all day'
         : `${String(booking.start_time ?? '').slice(0, 5)}–${String(booking.end_time ?? '').slice(0, 5)}`;
+      const bookingStart = String(booking.booking_date).slice(0, 10);
+      const bookingEnd = String(booking.end_date).slice(0, 10);
+      const dateLabel =
+        bookingStart === bookingEnd ? bookingStart : `${bookingStart} to ${bookingEnd}`;
       const title = status === 'approved' ? 'Venue booking approved' : 'Venue booking rejected';
-      const base = `${booking.venue_name} on ${booking.booking_date} (${label})`;
+      const base = `${booking.venue_name} for ${dateLabel} (${label})`;
       const body =
         status === 'approved'
           ? `Your booking for ${base} was approved.`

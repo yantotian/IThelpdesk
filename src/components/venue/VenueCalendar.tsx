@@ -43,11 +43,20 @@ export default function VenueCalendar({
   const occupancy = new Map<string, DayOccupancy>();
   for (const b of bookings) {
     if (b.status !== 'approved' && b.status !== 'pending') continue;
-    const key = b.booking_date.slice(0, 10);
-    const current = occupancy.get(key) ?? { approved: 0, pending: 0 };
-    if (b.status === 'approved') current.approved += 1;
-    else current.pending += 1;
-    occupancy.set(key, current);
+    const startKey = b.booking_date.slice(0, 10);
+    const endKey = (b.end_date ?? b.booking_date).slice(0, 10);
+    let cursor = parseDateKey(startKey);
+    const last = parseDateKey(endKey);
+    // A booking may span several days; mark each one. The guard caps the walk
+    // so malformed ranges can never loop forever.
+    for (let guard = 0; cursor <= last && guard < 366; guard += 1) {
+      const key = toDateKey(cursor);
+      const current = occupancy.get(key) ?? { approved: 0, pending: 0 };
+      if (b.status === 'approved') current.approved += 1;
+      else current.pending += 1;
+      occupancy.set(key, current);
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate() + 1);
+    }
   }
 
   const firstWeekday = new Date(year, monthIndex, 1).getDay();

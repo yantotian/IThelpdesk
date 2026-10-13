@@ -21,6 +21,7 @@ import {
 } from '@/lib/api';
 import type { Venue, VenueBooking, VenueBookingStatus } from '@/types/types';
 import VenueCalendar, { toDateKey } from '@/components/venue/VenueCalendar';
+import { formatDateRange } from '@/lib/utils';
 import { Plus, RefreshCw, MapPin, Users, CalendarDays, X } from 'lucide-react';
 
 // ── Status badge ──────────────────────────────────────────────────────────────
@@ -58,6 +59,7 @@ function BookingForm({
     title: string;
     purpose: string | null;
     booking_date: string;
+    end_date: string;
     is_all_day: boolean;
     start_time: string | null;
     end_time: string | null;
@@ -68,11 +70,21 @@ function BookingForm({
     title: '',
     purpose: '',
     booking_date: date,
+    end_date: date,
     is_all_day: false,
     start_time: '09:00',
     end_time: '10:00',
   });
   const set = (k: string, v: unknown) => setF((p) => ({ ...p, [k]: v }));
+
+  // A booking spanning more than one day occupies whole days; start/end times
+  // only apply to a single-day booking.
+  const isMultiDay = f.end_date > f.booking_date;
+  const isAllDay = f.is_all_day || isMultiDay;
+
+  // Keep the end date on/after the start date when the start moves later.
+  const setStartDate = (v: string) =>
+    setF((p) => ({ ...p, booking_date: v, end_date: p.end_date < v ? v : p.end_date }));
 
   const handleSubmit = () => {
     if (!f.title.trim()) {
@@ -80,10 +92,14 @@ function BookingForm({
       return;
     }
     if (!f.booking_date) {
-      toast.error('Please choose a date');
+      toast.error('Please choose a start date');
       return;
     }
-    if (!f.is_all_day && f.end_time <= f.start_time) {
+    if (!f.end_date || f.end_date < f.booking_date) {
+      toast.error('End date cannot be before start date');
+      return;
+    }
+    if (!isAllDay && f.end_time <= f.start_time) {
       toast.error('End time must be after start time');
       return;
     }
@@ -91,9 +107,10 @@ function BookingForm({
       title: f.title.trim(),
       purpose: f.purpose || null,
       booking_date: f.booking_date,
-      is_all_day: f.is_all_day,
-      start_time: f.is_all_day ? null : f.start_time,
-      end_time: f.is_all_day ? null : f.end_time,
+      end_date: f.end_date,
+      is_all_day: isAllDay,
+      start_time: isAllDay ? null : f.start_time,
+      end_time: isAllDay ? null : f.end_time,
     });
   };
 
@@ -124,52 +141,75 @@ function BookingForm({
       </div>
 
       <div className="space-y-1">
-        <Label className="text-xs font-semibold">Date *</Label>
-        <Input
-          value={f.booking_date}
-          onChange={(e) => set('booking_date', e.target.value)}
-          className="h-9 text-sm"
-          type="date"
-        />
-      </div>
-
-      <div className="space-y-1">
-        <Label className="text-xs font-semibold">Duration</Label>
-        <Select
-          value={f.is_all_day ? 'all_day' : 'times'}
-          onValueChange={(v) => set('is_all_day', v === 'all_day')}
-        >
-          <SelectTrigger className="h-9 text-sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="times">Specific time</SelectItem>
-            <SelectItem value="all_day">All day</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {!f.is_all_day && (
+        <Label className="text-xs font-semibold">Booking period *</Label>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
-            <Label className="text-xs font-semibold">Start</Label>
+            <Label className="mono text-[10px] text-muted-foreground">START DATE</Label>
             <Input
-              value={f.start_time}
-              onChange={(e) => set('start_time', e.target.value)}
+              value={f.booking_date}
+              onChange={(e) => setStartDate(e.target.value)}
               className="h-9 text-sm"
-              type="time"
+              type="date"
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs font-semibold">End</Label>
+            <Label className="mono text-[10px] text-muted-foreground">END DATE</Label>
             <Input
-              value={f.end_time}
-              onChange={(e) => set('end_time', e.target.value)}
+              value={f.end_date}
+              min={f.booking_date}
+              onChange={(e) => set('end_date', e.target.value)}
               className="h-9 text-sm"
-              type="time"
+              type="date"
             />
           </div>
         </div>
+      </div>
+
+      {isMultiDay ? (
+        <p className="mono text-[10px] text-muted-foreground tracking-widest">
+          MULTI-DAY BOOKING · ALL DAY
+        </p>
+      ) : (
+        <>
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Duration</Label>
+            <Select
+              value={f.is_all_day ? 'all_day' : 'times'}
+              onValueChange={(v) => set('is_all_day', v === 'all_day')}
+            >
+              <SelectTrigger className="h-9 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="times">Specific time</SelectItem>
+                <SelectItem value="all_day">All day</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {!f.is_all_day && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Start</Label>
+                <Input
+                  value={f.start_time}
+                  onChange={(e) => set('start_time', e.target.value)}
+                  className="h-9 text-sm"
+                  type="time"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">End</Label>
+                <Input
+                  value={f.end_time}
+                  onChange={(e) => set('end_time', e.target.value)}
+                  className="h-9 text-sm"
+                  type="time"
+                />
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       <div className="flex gap-2 pt-1">
@@ -242,6 +282,7 @@ export default function VenueBookingPage() {
     title: string;
     purpose: string | null;
     booking_date: string;
+    end_date: string;
     is_all_day: boolean;
     start_time: string | null;
     end_time: string | null;
@@ -272,7 +313,11 @@ export default function VenueBookingPage() {
   const selectedDayBookings = useMemo(
     () =>
       bookings
-        .filter((b) => b.booking_date.slice(0, 10) === selectedDate)
+        .filter(
+          (b) =>
+            b.booking_date.slice(0, 10) <= selectedDate &&
+            (b.end_date ?? b.booking_date).slice(0, 10) >= selectedDate
+        )
         .sort((a, b) => {
           if (a.is_all_day !== b.is_all_day) return a.is_all_day ? -1 : 1;
           return (a.start_time ?? '').localeCompare(b.start_time ?? '');
@@ -460,7 +505,7 @@ export default function VenueBookingPage() {
                           <StatusBadge status={b.status} />
                         </div>
                         <div className="mono text-[10px] text-muted-foreground">
-                          {b.booking_date.slice(0, 10)} · {timeLabel(b)}
+                          {formatDateRange(b.booking_date, b.end_date)} · {timeLabel(b)}
                         </div>
                         {(b.status === 'pending' || b.status === 'approved') && (
                           <button

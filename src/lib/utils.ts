@@ -89,3 +89,17 @@ export function formatDate(
     ...opts,
   }).format(new Date(date));
 }
+
+/**
+ * Render a plain-date period (YYYY-MM-DD or ISO strings) as a single date for
+ * same-day bookings, or "start → end" for multi-day bookings.
+ */
+export function formatDateRange(
+  start: string | null | undefined,
+  end?: string | null
+): string {
+  const s = start ? String(start).slice(0, 10) : "";
+  if (!s) return "";
+  const e = end ? String(end).slice(0, 10) : s;
+  return !e || e === s ? s : `${s} → ${e}`;
+}
