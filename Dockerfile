@@ -3,7 +3,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1 — build the React frontend
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:20-alpine AS web
+FROM node:22-alpine AS web
 WORKDIR /app
 
 # Only manifests first, so the dependency layer is cached independently of source.
@@ -42,10 +42,10 @@ RUN npm run build
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 3 — runtime: nginx serves the SPA and proxies the API
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:20-alpine AS runtime
+FROM node:22-alpine AS runtime
 WORKDIR /app
 
-RUN apk add --no-cache nginx curl
+RUN apk upgrade --no-cache && apk add --no-cache nginx curl
 
 COPY --from=web  /app/dist               /usr/share/nginx/html
 COPY --from=api  /app/server/dist        /app/api/dist
@@ -58,6 +58,8 @@ COPY docker/nginx.conf /etc/nginx/http.d/default.conf
 COPY docker/entrypoint.sh /app/entrypoint.sh
 # Strip CR so the script runs even when checked out with CRLF on Windows.
 RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh && mkdir -p /app/uploads
+# The runtime only executes Node; remove package-manager tooling and its CVE surface.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 ENV NODE_ENV=production \
     PORT=3001 \
@@ -70,3 +72,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=5 \
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
+
