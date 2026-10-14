@@ -13,6 +13,7 @@ import {
   LineChart, Line, CartesianGrid,
 } from 'recharts';
 import { formatUtc8Date, formatUtc8ShortDate, formatUtc8DateTime, formatUtc8DateStamp } from '@/lib/utils';
+import { downloadCsvFile, escapeCsvCell } from '@/lib/csv';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const COLORS = ['hsl(18 85% 40%)','hsl(18 85% 60%)','hsl(18 65% 30%)','hsl(30 50% 55%)','hsl(200 60% 45%)'];
@@ -23,25 +24,18 @@ const STATUS_COLORS: Record<string, string> = {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 type SpeedLogRow = SpeedTestLog & { internet?: { id: string; location: string; isp_name: string } };
 
-function downloadCSV(content: string, filename: string) {
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-}
-
-function escapeCSV(v: string | number | boolean | null | undefined) {
-  return `"${String(v ?? '').replace(/"/g, '""')}"`;
-}
+// Shared with the ICT Inventory page so every CSV this app writes is escaped the
+// same way (and so anything it writes can be read back by the CSV parser).
+const downloadCSV = downloadCsvFile;
+const escapeCSV = escapeCsvCell;
 
 // ── Export full report CSV ────────────────────────────────────────────────────
 function exportFullReport(devices: ICTDevice[], internet: ICTInternet[]) {
-  const devHeaders = ['Section','Type','Brand','Model','Serial No','Asset Tag','Location','Assigned To','Status',
+  const devHeaders = ['Section','Type','Office','Brand','Model','Serial No','Asset Tag','Location','Assigned To','Status',
     'CPU','GPU','RAM (GB)','Storage (GB)','Storage Type','OS','Printer Type','Network Printer',
     'Router Type','WiFi Standard','Ports','Purchase Date','Warranty Until','Notes'];
   const devRows = devices.map(d => [
-    'DEVICE', d.device_type, d.brand, d.model, d.serial_no, d.asset_tag, d.location, d.assigned_to, d.status,
+    'DEVICE', d.device_type, d.office, d.brand, d.model, d.serial_no, d.asset_tag, d.location, d.assigned_to, d.status,
     d.cpu, d.gpu, d.ram_gb, d.storage_gb, d.storage_type, d.os,
     d.printer_type, d.is_network_printer, d.router_type, d.wifi_standard, d.num_ports,
     d.purchase_date, d.warranty_until, d.notes,
@@ -132,7 +126,6 @@ export default function ICTDashboardPage() {
   const laptops  = devices.filter(d => d.device_type === 'laptop');
   const desktops = devices.filter(d => d.device_type === 'desktop');
   const printers = devices.filter(d => d.device_type === 'printer');
-  const routers  = devices.filter(d => d.device_type === 'router');
 
   const statusCount = (arr: ICTDevice[]) => {
     const s: Record<string, number> = {};
@@ -144,12 +137,19 @@ export default function ICTDashboardPage() {
     acc[d.status] = (acc[d.status] ?? 0) + 1; return acc;
   }, {} as Record<string, number>);
 
-  const deviceTypeData = [
-    { name: 'Laptops', count: laptops.length },
-    { name: 'Desktops', count: desktops.length },
-    { name: 'Printers', count: printers.length },
-    { name: 'Routers', count: routers.length },
-  ];
+  const deviceTypeData = (() => {
+    // Device Type is a configurable list (see ICT Inventory → Manage Choices),
+    // so the breakdown is built from whatever types actually exist rather than
+    // from a fixed set.
+    const buckets: Record<string, number> = {};
+    devices.forEach(d => { buckets[d.device_type] = (buckets[d.device_type] ?? 0) + 1; });
+    return Object.entries(buckets)
+      .sort((a, b) => b[1] - a[1])
+      .map(([type, count]) => {
+        const label = type.charAt(0).toUpperCase() + type.slice(1);
+        return { name: /s$/i.test(label) ? label : `${label}s`, count };
+      });
+  })();
 
   const statusPieData = Object.entries(allStatuses).map(([name, value]) => ({ name, value }));
 

@@ -226,21 +226,34 @@ export async function searchTickets(query: string) {
   return api.get<Ticket[]>(`/search?q=${encodeURIComponent(query)}`);
 }
 
-// ── ICT Inventory Submissions ─────────────────────────────────────────────────
-import type { ICTInventorySubmission } from '@/types/types';
+// ── Inventory choices (Device Type / Storage Type) ───────────────────────────
+import type { ICTInventoryOption, InventoryOptionType } from '@/types/types';
 
-export async function getMySubmissions() {
-  return api.get<ICTInventorySubmission[]>('/ict/submissions');
+export async function getICTOptions() {
+  return api.get<ICTInventoryOption[]>('/ict/options');
 }
 
-export async function getAllSubmissions() {
-  return api.get<ICTInventorySubmission[]>('/ict/submissions');
+export async function createICTOption(payload: { option_type: InventoryOptionType; value: string }) {
+  return api.post<ICTInventoryOption>('/ict/options', payload);
 }
 
-export async function createInventorySubmission(payload: Omit<ICTInventorySubmission,
-  'id' | 'status' | 'admin_note' | 'reviewed_by' | 'reviewed_at' | 'created_at' | 'submitter' | 'reviewer'
->) {
-  return api.post<ICTInventorySubmission>('/ict/submissions', payload);
+export async function deleteICTOption(id: string) {
+  return api.delete<{ message: string }>(`/ict/options/${id}`);
+}
+
+// ── CSV import (mirrors the Export CSV output) ───────────────────────────────
+export interface ICTImportResult {
+  created: number;
+  failed: number;
+  errors: { row: number; message: string }[];
+}
+
+export async function importICTDevices(rows: Record<string, unknown>[]) {
+  return api.post<ICTImportResult>('/ict/devices/import', { rows });
+}
+
+export async function importICTInternet(rows: Record<string, unknown>[]) {
+  return api.post<ICTImportResult>('/ict/internet/import', { rows });
 }
 
 export async function getIDRequestCount(): Promise<number> {

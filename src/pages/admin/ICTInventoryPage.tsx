@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import MainLayout from '@/components/layouts/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,8 +10,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from 'sonner';
 import {
   Monitor, Laptop, Printer, Router, Wifi, Plus, Pencil, Trash2,
-  Search, RefreshCw, ChevronDown, ChevronUp, FileDown, Activity,
-  Link2, Unlink, Gauge, ClipboardList,
+  Search, RefreshCw, ChevronDown, ChevronUp, FileDown,
+  Link2, Unlink, Gauge, Upload, Settings2, Cpu,
 } from 'lucide-react';
 import {
   getICTDevices, createICTDevice, updateICTDevice, deleteICTDevice,
@@ -19,24 +19,31 @@ import {
   getSpeedTestLogs, createSpeedTestLog, deleteSpeedTestLog,
   getDeviceTicketLinks, createDeviceTicketLink, deleteDeviceTicketLink,
   searchTickets,
-  getAllSubmissions,
+  getICTOptions, createICTOption, deleteICTOption,
+  importICTDevices, importICTInternet,
 } from '@/lib/api';
-import type { ICTDevice, ICTInternet, DeviceType, SpeedTestLog, DeviceTicketLink, ICTInventorySubmission } from '@/types/types';
+import type { ICTDevice, ICTInternet, SpeedTestLog, DeviceTicketLink, ICTInventoryOption, InventoryOptionType } from '@/types/types';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
 } from 'recharts';
 import { formatUtc8Date, formatUtc8ShortDate, formatUtc8DateTime, formatUtc8DateStamp } from '@/lib/utils';
+import { buildCsv, downloadCsvFile, parseCsv, pickCell } from '@/lib/csv';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-const DEVICE_TABS: { key: DeviceType | 'internet' | 'submissions'; label: string; icon: React.ReactNode }[] = [
-  { key: 'laptop',     label: 'Laptops',     icon: <Laptop  className="w-4 h-4" /> },
-  { key: 'desktop',    label: 'Desktops',    icon: <Monitor className="w-4 h-4" /> },
-  { key: 'printer',    label: 'Printers',    icon: <Printer className="w-4 h-4" /> },
-  { key: 'router',     label: 'Routers',     icon: <Router  className="w-4 h-4" /> },
-  { key: 'internet',   label: 'Internet',    icon: <Wifi    className="w-4 h-4" /> },
-  { key: 'submissions', label: 'Submissions', icon: <ClipboardList className="w-4 h-4" /> },
-];
+const INTERNET_TAB = 'internet';
+
+// Built-in types keep their own icon; anything the System Admin adds falls back
+// to a generic device glyph.
+const TYPE_ICONS: Record<string, React.ReactNode> = {
+  laptop: <Laptop className="w-4 h-4" />,
+  desktop: <Monitor className="w-4 h-4" />,
+  printer: <Printer className="w-4 h-4" />,
+  router: <Router className="w-4 h-4" />,
+};
+const typeIcon = (type: string) => TYPE_ICONS[type] ?? <Cpu className="w-4 h-4" />;
+const typeLabel = (type: string) => type.charAt(0).toUpperCase() + type.slice(1);
+const tabLabel = (type: string) => (/s$/i.test(type) ? typeLabel(type) : `${typeLabel(type)}s`);
 
 const STATUS_COLORS: Record<string, string> = {
   active:       'border-green-500 text-green-600',
@@ -54,44 +61,95 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ── CSV export / import ──────────────────────────────────────────────────────
+// One header list serves both directions: `exportDevicesCSV` writes these
+// columns, `deviceRowFromCsv` reads them back by the same name, so an export
+// can be edited in a spreadsheet and imported again unchanged.
+const DEVICE_CSV_HEADERS = ['Type','Office','Brand','Model','Serial No','Asset Tag','Location','Assigned To','Status',
+  'CPU','GPU','RAM (GB)','Storage (GB)','Storage Type','OS',
+  'Printer Type','Network Printer','Router Type','WiFi Standard','Ports',
+  'Purchase Date','Warranty Until','Notes'];
+
 function exportDevicesCSV(devices: ICTDevice[], type: string) {
-  const headers = ['Type','Brand','Model','Serial No','Asset Tag','Location','Assigned To','Status',
-    'CPU','GPU','RAM (GB)','Storage (GB)','Storage Type','OS',
-    'Printer Type','Network Printer','Router Type','WiFi Standard','Ports',
-    'Purchase Date','Warranty Until','Notes'];
-  const escape = (v: string | number | boolean | null | undefined) => `"${String(v ?? '').replace(/"/g,'""')}"`;
-  const lines = [headers.join(','), ...devices.map(d => [
-    d.device_type, d.brand, d.model, d.serial_no, d.asset_tag, d.location, d.assigned_to, d.status,
+  const rows = devices.map(d => [
+    d.device_type, d.office, d.brand, d.model, d.serial_no, d.asset_tag, d.location, d.assigned_to, d.status,
     d.cpu, d.gpu, d.ram_gb, d.storage_gb, d.storage_type, d.os,
     d.printer_type, d.is_network_printer, d.router_type, d.wifi_standard, d.num_ports,
     d.purchase_date, d.warranty_until, d.notes,
-  ].map(escape).join(','))];
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = `ict-${type}-${formatUtc8DateStamp(new Date())}.csv`; a.click();
+  ]);
+  downloadCsvFile(buildCsv(DEVICE_CSV_HEADERS, rows), `ict-${type}-${formatUtc8DateStamp(new Date())}.csv`);
 }
 
+const INTERNET_CSV_HEADERS = ['Location','ISP','Plan Name','Plan Type','Subscribed (Mbps)','DL (Mbps)','UL (Mbps)',
+  'Monthly Cost','Contract Start','Contract End','Account No','Contact Person','Contact Number','Router','Status','Notes'];
+
 function exportInternetCSV(rows: ICTInternet[]) {
-  const headers = ['Location','ISP','Plan Name','Plan Type','Subscribed (Mbps)','DL (Mbps)','UL (Mbps)',
-    'Monthly Cost','Contract Start','Contract End','Account No','Contact Person','Contact Number','Router','Status','Notes'];
-  const escape = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g,'""')}"`;
-  const lines = [headers.join(','), ...rows.map(r => [
+  const csvRows = rows.map(r => [
     r.location, r.isp_name, r.plan_name, r.plan_type, r.subscribed_speed_mbps,
     r.actual_dl_mbps, r.actual_ul_mbps, r.monthly_cost,
     r.contract_start, r.contract_end, r.account_no,
     r.contact_person, r.contact_number,
     r.router ? `${r.router.brand} ${r.router.model}` : '',
     r.status, r.notes,
-  ].map(escape).join(','))];
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = `ict-internet-${formatUtc8DateStamp(new Date())}.csv`; a.click();
+  ]);
+  downloadCsvFile(buildCsv(INTERNET_CSV_HEADERS, csvRows), `ict-internet-${formatUtc8DateStamp(new Date())}.csv`);
+}
+
+/** Reads a device row exported above into the payload POST /ict/devices/import expects. */
+function deviceRowFromCsv(row: Record<string, string>): Record<string, unknown> {
+  return {
+    device_type: pickCell(row, 'Type'),
+    office: pickCell(row, 'Office'),
+    brand: pickCell(row, 'Brand'),
+    model: pickCell(row, 'Model'),
+    serial_no: pickCell(row, 'Serial No'),
+    asset_tag: pickCell(row, 'Asset Tag'),
+    location: pickCell(row, 'Location'),
+    assigned_to: pickCell(row, 'Assigned To'),
+    status: pickCell(row, 'Status'),
+    cpu: pickCell(row, 'CPU'),
+    gpu: pickCell(row, 'GPU'),
+    ram_gb: pickCell(row, 'RAM (GB)'),
+    storage_gb: pickCell(row, 'Storage (GB)'),
+    storage_type: pickCell(row, 'Storage Type'),
+    os: pickCell(row, 'OS'),
+    printer_type: pickCell(row, 'Printer Type'),
+    is_network_printer: pickCell(row, 'Network Printer'),
+    router_type: pickCell(row, 'Router Type'),
+    wifi_standard: pickCell(row, 'WiFi Standard'),
+    num_ports: pickCell(row, 'Ports'),
+    purchase_date: pickCell(row, 'Purchase Date'),
+    warranty_until: pickCell(row, 'Warranty Until'),
+    notes: pickCell(row, 'Notes'),
+  };
+}
+
+/** Reads an internet row exported above into the payload POST /ict/internet/import expects. */
+function internetRowFromCsv(row: Record<string, string>): Record<string, unknown> {
+  return {
+    location: pickCell(row, 'Location'),
+    isp_name: pickCell(row, 'ISP'),
+    plan_name: pickCell(row, 'Plan Name'),
+    plan_type: pickCell(row, 'Plan Type'),
+    subscribed_speed_mbps: pickCell(row, 'Subscribed (Mbps)'),
+    actual_dl_mbps: pickCell(row, 'DL (Mbps)'),
+    actual_ul_mbps: pickCell(row, 'UL (Mbps)'),
+    monthly_cost: pickCell(row, 'Monthly Cost'),
+    contract_start: pickCell(row, 'Contract Start'),
+    contract_end: pickCell(row, 'Contract End'),
+    account_no: pickCell(row, 'Account No'),
+    contact_person: pickCell(row, 'Contact Person'),
+    contact_number: pickCell(row, 'Contact Number'),
+    router: pickCell(row, 'Router'),
+    status: pickCell(row, 'Status'),
+    notes: pickCell(row, 'Notes'),
+  };
 }
 
 // ── Device Form ───────────────────────────────────────────────────────────────
 const EMPTY_DEVICE: Partial<ICTDevice> = {
   device_type: 'laptop', brand: '', model: '', serial_no: '', asset_tag: '',
-  location: '', assigned_to: '', status: 'active',
+  office: '', location: '', assigned_to: '', status: 'active',
   cpu: '', gpu: '', ram_gb: undefined, storage_gb: undefined, storage_type: undefined, os: '',
   printer_type: undefined, is_network_printer: false,
   router_type: undefined, wifi_standard: '', num_ports: undefined,
@@ -99,12 +157,25 @@ const EMPTY_DEVICE: Partial<ICTDevice> = {
 };
 
 function DeviceForm({
-  initial, onSave, onClose, routers,
-}: { initial: Partial<ICTDevice>; onSave: (d: Partial<ICTDevice>) => Promise<void>; onClose: () => void; routers: ICTDevice[] }) {
+  initial, onSave, onClose, deviceTypes, storageTypes,
+}: {
+  initial: Partial<ICTDevice>;
+  onSave: (d: Partial<ICTDevice>) => Promise<void>;
+  onClose: () => void;
+  deviceTypes: string[];
+  storageTypes: string[];
+}) {
   const [form, setForm] = useState<Partial<ICTDevice>>(initial);
   const [saving, setSaving] = useState(false);
   const set = (k: keyof ICTDevice, v: unknown) => setForm(p => ({ ...p, [k]: v }));
   const type = form.device_type;
+
+  // A value already stored on this record stays selectable even if the System
+  // Admin has since removed the choice from the list.
+  const typeChoices = form.device_type && !deviceTypes.includes(form.device_type)
+    ? [...deviceTypes, form.device_type] : deviceTypes;
+  const storageChoices = form.storage_type && !storageTypes.includes(form.storage_type)
+    ? [...storageTypes, form.storage_type] : storageTypes;
 
   const handleSave = async () => {
     if (!form.brand?.trim()) { toast.error('Brand is required'); return; }
@@ -125,8 +196,8 @@ function DeviceForm({
             <Select value={form.device_type} onValueChange={v => set('device_type', v)}>
               <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {(['laptop','desktop','printer','router'] as DeviceType[]).map(t => (
-                  <SelectItem key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</SelectItem>
+                {typeChoices.map(t => (
+                  <SelectItem key={t} value={t}>{typeLabel(t)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -142,8 +213,19 @@ function DeviceForm({
               </SelectContent>
             </Select>
           </div>
-          {[['brand','Brand *'],['model','Model *'],['serial_no','Serial No'],['asset_tag','Asset Tag'],
-            ['location','Location'],['assigned_to','Assigned To']].map(([k,l]) => (
+          {[['brand','Brand *'],['model','Model *'],['serial_no','Serial No'],['asset_tag','Asset Tag']].map(([k,l]) => (
+            <div key={k} className="space-y-1">
+              <Label className="text-xs font-semibold">{l}</Label>
+              <Input value={(form as any)[k] ?? ''} onChange={e => set(k as keyof ICTDevice, e.target.value)} className="h-9 text-sm" />
+            </div>
+          ))}
+          {/* Office is prefilled from the value given during registration. */}
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Office</Label>
+            <Input value={form.office ?? ''} onChange={e => set('office', e.target.value)} className="h-9 text-sm"
+              placeholder="Your office (from your profile)" autoComplete="org" />
+          </div>
+          {[['location','Location'],['assigned_to','Assigned To']].map(([k,l]) => (
             <div key={k} className="space-y-1">
               <Label className="text-xs font-semibold">{l}</Label>
               <Input value={(form as any)[k] ?? ''} onChange={e => set(k as keyof ICTDevice, e.target.value)} className="h-9 text-sm" />
@@ -152,8 +234,8 @@ function DeviceForm({
         </div>
       </div>
 
-      {/* Compute specs */}
-      {(type === 'laptop' || type === 'desktop') && (
+      {/* Compute specs — laptop, desktop and any custom type the System Admin adds */}
+      {type !== 'printer' && type !== 'router' && (
         <div>
           <div className="mono text-[10px] text-muted-foreground tracking-widest mb-2">HARDWARE SPECIFICATIONS</div>
           <div className="grid grid-cols-2 gap-3">
@@ -176,7 +258,7 @@ function DeviceForm({
               <Select value={form.storage_type ?? ''} onValueChange={v => set('storage_type', v || undefined)}>
                 <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select type" /></SelectTrigger>
                 <SelectContent>
-                  {['HDD','SSD','NVMe','eMMC'].map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  {storageChoices.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -718,15 +800,138 @@ function DeviceTicketsPanel({ device, isAdmin }: { device: ICTDevice; isAdmin: b
     </div>
   );
 }
+// ── Manage Choices (System Admin) ─────────────────────────────────────────────
+function ManageChoicesDialog({
+  open, onOpenChange, options, onChanged,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  options: ICTInventoryOption[];
+  onChanged: () => void;
+}) {
+  const [drafts, setDrafts] = useState<Record<InventoryOptionType, string>>({ device_type: '', storage_type: '' });
+  const [saving, setSaving] = useState<InventoryOptionType | 'delete' | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ICTInventoryOption | null>(null);
+
+  const GROUPS: { type: InventoryOptionType; title: string; hint: string; placeholder: string }[] = [
+    { type: 'device_type', title: 'DEVICE TYPE', hint: 'Choices in the Device Type field, one tab per choice.', placeholder: 'e.g. Server' },
+    { type: 'storage_type', title: 'STORAGE TYPE', hint: 'Choices in the Storage Type field.', placeholder: 'e.g. SSD (M.2)' },
+  ];
+
+  const handleAdd = async (option_type: InventoryOptionType) => {
+    const value = drafts[option_type].trim();
+    if (!value) { toast.error('Type the new choice first'); return; }
+    setSaving(option_type);
+    try {
+      await createICTOption({ option_type, value });
+      toast.success(`"${value}" added`);
+      setDrafts(p => ({ ...p, [option_type]: '' }));
+      onChanged();
+    } catch (e: any) { toast.error(e.message); }
+    setSaving(null);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setSaving('delete');
+    try {
+      await deleteICTOption(deleteTarget.id);
+      toast.success(`"${deleteTarget.value}" removed`);
+      setDeleteTarget(null);
+      onChanged();
+    } catch (e: any) { toast.error(e.message); }
+    setSaving(null);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg max-h-[90dvh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-base font-bold mono">MANAGE CHOICES</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-5 text-sm">
+          <p className="text-xs text-muted-foreground">
+            Add or remove the options offered by the ICT Inventory form. Records that already
+            use a removed choice keep the value they were saved with.
+          </p>
+
+          {GROUPS.map(g => {
+            const list = options.filter(o => o.option_type === g.type);
+            return (
+              <div key={g.type} className="space-y-2">
+                <div>
+                  <div className="mono text-[10px] text-muted-foreground tracking-widest">{g.title}</div>
+                  <div className="text-[11px] text-muted-foreground/70">{g.hint}</div>
+                </div>
+                <div className="border border-border divide-y divide-border/50">
+                  {list.length === 0
+                    ? <div className="px-3 py-2 text-xs text-muted-foreground">No choices yet.</div>
+                    : list.map(o => (
+                      <div key={o.id} className="flex items-center justify-between px-3 py-2">
+                        <span className="text-xs">{o.label}</span>
+                        <button
+                          onClick={() => setDeleteTarget(o)}
+                          title={`Remove "${o.value}"`}
+                          className="text-muted-foreground hover:text-destructive transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    value={drafts[g.type]}
+                    onChange={e => setDrafts(p => ({ ...p, [g.type]: e.target.value }))}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(g.type); } }}
+                    placeholder={g.placeholder}
+                    className="h-8 text-sm"
+                    autoComplete="off"
+                  />
+                  <Button size="sm" onClick={() => handleAdd(g.type)} disabled={saving === g.type} className="h-8 text-xs shrink-0">
+                    <Plus className="w-3 h-3 mr-1" /> {saving === g.type ? 'Adding...' : 'Add'}
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <AlertDialog open={!!deleteTarget} onOpenChange={o => { if (!o) setDeleteTarget(null); }}>
+          <AlertDialogContent className="max-w-[calc(100%-2rem)] md:max-w-sm">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove this choice?</AlertDialogTitle>
+              <AlertDialogDescription>
+                "{deleteTarget?.value}" will no longer be offered in the form or accepted on import.
+                Existing records keep their value.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete} disabled={saving === 'delete'}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                {saving === 'delete' ? 'Removing...' : 'Remove'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function ICTInventoryPage() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'it_admin' || profile?.role === 'sysadmin';
+  const isSysAdmin = profile?.role === 'sysadmin';
 
-  const [activeTab, setActiveTab] = useState<DeviceType | 'internet' | 'submissions'>('laptop');
+  const [activeTab, setActiveTab] = useState<string>('laptop');
   const [devices, setDevices] = useState<ICTDevice[]>([]);
   const [internet, setInternet] = useState<ICTInternet[]>([]);
   const [routers, setRouters] = useState<ICTDevice[]>([]);
-  const [submissions, setSubmissions] = useState<ICTInventorySubmission[]>([]);
+  const [options, setOptions] = useState<ICTInventoryOption[]>([]);
+  const [optionsLoaded, setOptionsLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -736,32 +941,66 @@ export default function ICTInventoryPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; type: 'device' | 'internet' } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  const [expandedSubmission, setExpandedSubmission] = useState<string | null>(null);
+  const [choicesOpen, setChoicesOpen] = useState(false);
 
+  // CSV import — the file picker behind the Import CSV button.
+  const csvInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+
+  // Everything is fetched once; switching tabs only changes what is displayed.
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const [devs, nets, rts, subs] = await Promise.all([
-        getICTDevices(activeTab !== 'internet' && activeTab !== 'submissions' ? activeTab : undefined),
-        activeTab === 'internet' ? getICTInternet() : Promise.resolve([] as ICTInternet[]),
+      const [devs, nets, rts, opts] = await Promise.all([
+        getICTDevices(),
+        getICTInternet(),
         getICTDevices('router'),
-        getAllSubmissions(),
+        getICTOptions(),
       ]);
       setDevices(devs);
       setInternet(nets);
       setRouters(rts);
-      setSubmissions(subs);
+      setOptions(opts);
+      setOptionsLoaded(true);
     } catch (e: any) { toast.error(e.message); }
     setLoading(false);
-  }, [activeTab]);
+  }, []);
 
-  useEffect(() => { reload(); setSearch(''); setStatusFilter('all'); }, [reload]);
+  useEffect(() => { reload(); }, [reload]);
+
+  const deviceTypes = useMemo(
+    () => options.filter(o => o.option_type === 'device_type').map(o => o.value),
+    [options],
+  );
+  const storageTypes = useMemo(
+    () => options.filter(o => o.option_type === 'storage_type').map(o => o.value),
+    [options],
+  );
+  const isInternetTab = activeTab === INTERNET_TAB;
+
+  // Keep the selected tab pointing at a device type that still exists — a
+  // choice removed in Manage Choices must not strand the page on a dead tab.
+  useEffect(() => {
+    if (!optionsLoaded) return;
+    if (deviceTypes.length === 0) { if (!isInternetTab) setActiveTab(INTERNET_TAB); return; }
+    if (!isInternetTab && !deviceTypes.includes(activeTab)) setActiveTab(deviceTypes[0]);
+  }, [optionsLoaded, deviceTypes, activeTab, isInternetTab]);
+
+  const tabs = useMemo(() => [
+    ...deviceTypes.map(t => ({ key: t, label: tabLabel(t), icon: typeIcon(t) })),
+    { key: INTERNET_TAB, label: 'Internet', icon: <Wifi className="w-4 h-4" /> },
+  ], [deviceTypes]);
+
+  // Each tab has its own status vocabulary, so start fresh when switching.
+  useEffect(() => { setSearch(''); setStatusFilter('all'); }, [activeTab]);
 
   const filteredDevices = devices.filter(d => {
+    if (d.device_type !== activeTab) return false;
     const q = search.toLowerCase();
     const matchSearch = !q || d.brand.toLowerCase().includes(q) || d.model.toLowerCase().includes(q)
       || (d.serial_no ?? '').toLowerCase().includes(q) || (d.asset_tag ?? '').toLowerCase().includes(q)
-      || (d.location ?? '').toLowerCase().includes(q) || (d.assigned_to ?? '').toLowerCase().includes(q);
+      || (d.office ?? '').toLowerCase().includes(q) || (d.location ?? '').toLowerCase().includes(q)
+      || (d.assigned_to ?? '').toLowerCase().includes(q);
     return matchSearch && (statusFilter === 'all' || d.status === statusFilter);
   });
 
@@ -771,6 +1010,12 @@ export default function ICTInventoryPage() {
       || r.location.toLowerCase().includes(q);
     return matchSearch && (statusFilter === 'all' || r.status === statusFilter);
   });
+
+  const deviceCounts: Record<string, number> = useMemo(() => {
+    const counts: Record<string, number> = {};
+    devices.forEach(d => { counts[d.device_type] = (counts[d.device_type] ?? 0) + 1; });
+    return counts;
+  }, [devices]);
 
   const handleSaveDevice = async (data: Partial<ICTDevice>) => {
     if (deviceDialog.editing) {
@@ -809,24 +1054,48 @@ export default function ICTInventoryPage() {
     setDeleting(false);
   };
 
-  const tabCounts: Record<string, number> = {
-    laptop: devices.filter(d => d.device_type === 'laptop').length,
-    desktop: devices.filter(d => d.device_type === 'desktop').length,
-    printer: devices.filter(d => d.device_type === 'printer').length,
-    router: devices.filter(d => d.device_type === 'router').length,
-    internet: internet.length,
-  };
+  // ── CSV import ─────────────────────────────────────────────────────────────
+  // Reads a file produced by Export CSV (headers matched case- and punctuation
+  // insensitively), so an export edited in a spreadsheet can be imported back.
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setImporting(true);
+    try {
+      const { rows } = parseCsv(await file.text());
+      if (rows.length === 0) {
+        toast.error('No data rows found in this file');
+        return;
+      }
 
-  // When switching non-internet tabs, we need counts from all-devices fetch
-  // so also keep a summary loaded
-  const [allDeviceSummary, setAllDeviceSummary] = useState<Record<string, number>>({});
-  useEffect(() => {
-    getICTDevices().then(all => {
-      const s: Record<string, number> = {};
-      all.forEach(d => { s[d.device_type] = (s[d.device_type] ?? 0) + 1; });
-      setAllDeviceSummary(s);
-    }).catch(() => {});
-  }, [devices]);
+      const required = isInternetTab ? ['Location', 'ISP', 'Plan Name'] : ['Type', 'Brand', 'Model'];
+      const missing = required.filter(h => pickCell(rows[0], h) === '');
+      if (missing.length > 0) {
+        toast.error(
+          `This does not look like an ICT Inventory export — missing column${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`,
+        );
+        return;
+      }
+
+      const payload = isInternetTab ? rows.map(internetRowFromCsv) : rows.map(deviceRowFromCsv);
+      const result = isInternetTab ? await importICTInternet(payload) : await importICTDevices(payload);
+
+      if (result.created > 0) {
+        toast.success(`Imported ${result.created} of ${rows.length} row${rows.length === 1 ? '' : 's'}`);
+        reload();
+      }
+      if (result.failed > 0) {
+        const detail = result.errors.slice(0, 3).map(err => `Row ${err.row}: ${err.message}`).join('\n')
+          + (result.errors.length > 3 ? `\n…and ${result.errors.length - 3} more` : '');
+        toast.error(`${result.failed} row${result.failed === 1 ? '' : 's'} skipped`, { description: detail });
+      }
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setImporting(false);
+    }
+  };
 
   return (
     <MainLayout>
@@ -836,42 +1105,46 @@ export default function ICTInventoryPage() {
           <div>
             <div className="laser-line mb-2 w-24" />
             <h1 className="text-xl font-bold text-foreground">ICT Inventory</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Manage laptops, desktops, printers, routers, and internet subscriptions.</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Track devices, their offices, and internet subscriptions — add a record by hand or import an exported CSV.</p>
           </div>
-          <div className="flex gap-2">
-            {activeTab !== 'internet' && isAdmin && (
-              <Button size="sm" onClick={() => exportDevicesCSV(filteredDevices, activeTab)} variant="ghost" className="border border-border text-xs">
-                <FileDown className="w-3 h-3 mr-1" /> Export CSV
-              </Button>
-            )}
-            {activeTab === 'internet' && isAdmin && (
-              <Button size="sm" onClick={() => exportInternetCSV(filteredInternet)} variant="ghost" className="border border-border text-xs">
-                <FileDown className="w-3 h-3 mr-1" /> Export CSV
-              </Button>
-            )}
+          <div className="flex gap-2 flex-wrap">
+            <Button size="sm" variant="ghost"
+              onClick={() => isInternetTab ? exportInternetCSV(filteredInternet) : exportDevicesCSV(filteredDevices, activeTab)}
+              className="border border-border text-xs" title="Download the listed rows as CSV">
+              <FileDown className="w-3 h-3 mr-1" /> Export CSV
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => csvInputRef.current?.click()} disabled={importing}
+              className="border border-border text-xs" title="Import a CSV exported from this page">
+              <Upload className="w-3 h-3 mr-1" /> {importing ? 'Importing...' : 'Import CSV'}
+            </Button>
+            <input ref={csvInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleImport} />
             <Button size="sm" variant="ghost" onClick={reload} className="border border-border text-xs">
               <RefreshCw className="w-3 h-3 mr-1" /> Refresh
             </Button>
-            {isAdmin && (
-              <Button size="sm" onClick={() => activeTab === 'internet'
-                ? setInternetDialog({ open: true, editing: null })
-                : setDeviceDialog({ open: true, editing: null })}
-                className="text-xs">
-                <Plus className="w-3 h-3 mr-1" />
-                Add {activeTab === 'internet' ? 'Connection' : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
+            {isSysAdmin && (
+              <Button size="sm" variant="ghost" onClick={() => setChoicesOpen(true)}
+                className="border border-border text-xs" title="Add or remove Device Type and Storage Type choices">
+                <Settings2 className="w-3 h-3 mr-1" /> Manage Choices
               </Button>
             )}
+            <Button size="sm" onClick={() => isInternetTab
+              ? setInternetDialog({ open: true, editing: null })
+              : setDeviceDialog({ open: true, editing: null })}
+              className="text-xs">
+              <Plus className="w-3 h-3 mr-1" />
+              Add {isInternetTab ? 'Connection' : typeLabel(activeTab)}
+            </Button>
           </div>
         </div>
 
         {/* Tabs */}
         <div className="flex border-b border-border overflow-x-auto">
-          {DEVICE_TABS.map(({ key, label, icon }) => (
+          {tabs.map(({ key, label, icon }) => (
             <button key={key} onClick={() => setActiveTab(key)}
               className={`flex items-center gap-1.5 px-4 py-2.5 mono text-xs tracking-widest border-b-2 whitespace-nowrap transition-colors ${activeTab === key ? 'border-primary text-primary font-semibold' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
               {icon} {label.toUpperCase()}
               <span className="ml-1 text-[10px] bg-muted text-muted-foreground px-1 rounded">
-                {key === 'internet' ? internet.length : (allDeviceSummary[key] ?? 0)}
+                {key === INTERNET_TAB ? internet.length : (deviceCounts[key] ?? 0)}
               </span>
             </button>
           ))}
@@ -901,17 +1174,17 @@ export default function ICTInventoryPage() {
         </div>
 
         {/* Device Table */}
-        {activeTab !== 'internet' && (
+        {!isInternetTab && (
           loading
             ? <div className="py-10 text-center text-sm text-muted-foreground animate-pulse">Loading...</div>
             : filteredDevices.length === 0
-              ? <div className="border border-border bg-card py-12 text-center text-sm text-muted-foreground">No {activeTab}s found.</div>
+              ? <div className="border border-border bg-card py-12 text-center text-sm text-muted-foreground">No {tabLabel(activeTab).toLowerCase()} found.</div>
               : (
                 <div className="border border-border bg-card overflow-x-auto">
                   <table className="w-full text-sm whitespace-nowrap">
                     <thead className="border-b border-border bg-muted/30">
                       <tr>
-                        {['Brand','Model','Asset Tag','Location','Assigned To','Status','Specs','Actions'].map(h => (
+                        {['Brand','Model','Asset Tag','Office','Location','Assigned To','Status','Specs','Actions'].map(h => (
                           <th key={h} className="px-4 py-2.5 text-left mono text-[10px] text-muted-foreground tracking-widest font-semibold">{h}</th>
                         ))}
                       </tr>
@@ -923,6 +1196,7 @@ export default function ICTInventoryPage() {
                             <td className="px-4 py-2.5 font-medium">{d.brand}</td>
                             <td className="px-4 py-2.5">{d.model}</td>
                             <td className="px-4 py-2.5 mono text-xs text-muted-foreground">{d.asset_tag ?? '—'}</td>
+                            <td className="px-4 py-2.5 text-xs">{d.office ?? '—'}</td>
                             <td className="px-4 py-2.5 text-xs">{d.location ?? '—'}</td>
                             <td className="px-4 py-2.5 text-xs">{d.assigned_to ?? '—'}</td>
                             <td className="px-4 py-2.5"><StatusBadge status={d.status} /></td>
@@ -949,12 +1223,12 @@ export default function ICTInventoryPage() {
                           </tr>
                           {expandedRow === d.id && (
                             <tr key={`${d.id}-exp`} className="bg-muted/10 border-b border-border">
-                              <td colSpan={8} className="px-6 py-3 space-y-3">
+                              <td colSpan={9} className="px-6 py-3 space-y-3">
                                 {/* Specs grid */}
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                                  {(d.device_type === 'laptop' || d.device_type === 'desktop') && (
+                                  {d.device_type !== 'printer' && d.device_type !== 'router' && (
                                     <>
-                                      {[['CPU', d.cpu],['GPU', d.gpu],['RAM', d.ram_gb ? `${d.ram_gb} GB` : null],
+                                      {[['Type', typeLabel(d.device_type)],['Office', d.office],['CPU', d.cpu],['GPU', d.gpu],['RAM', d.ram_gb ? `${d.ram_gb} GB` : null],
                                         ['Storage', d.storage_gb ? `${d.storage_gb} GB ${d.storage_type ?? ''}` : null],
                                         ['OS', d.os],['Serial No', d.serial_no]].map(([l,v]) => v ? (
                                         <div key={l as string}><span className="text-muted-foreground">{l}: </span><span className="font-medium">{v}</span></div>
@@ -966,6 +1240,7 @@ export default function ICTInventoryPage() {
                                       <div><span className="text-muted-foreground">Type: </span><span className="font-medium">{d.printer_type ?? '—'}</span></div>
                                       <div><span className="text-muted-foreground">Network: </span><span className="font-medium">{d.is_network_printer ? 'Yes' : 'No'}</span></div>
                                       <div><span className="text-muted-foreground">Serial: </span><span className="font-medium">{d.serial_no ?? '—'}</span></div>
+                                      <div><span className="text-muted-foreground">Office: </span><span className="font-medium">{d.office ?? '—'}</span></div>
                                     </>
                                   )}
                                   {d.device_type === 'router' && (
@@ -974,6 +1249,7 @@ export default function ICTInventoryPage() {
                                       <div><span className="text-muted-foreground">WiFi: </span><span className="font-medium">{d.wifi_standard ?? '—'}</span></div>
                                       <div><span className="text-muted-foreground">Ports: </span><span className="font-medium">{d.num_ports ?? '—'}</span></div>
                                       <div><span className="text-muted-foreground">Serial: </span><span className="font-medium">{d.serial_no ?? '—'}</span></div>
+                                      <div><span className="text-muted-foreground">Office: </span><span className="font-medium">{d.office ?? '—'}</span></div>
                                     </>
                                   )}
                                   {d.purchase_date && <div><span className="text-muted-foreground">Purchased: </span><span className="font-medium">{d.purchase_date}</span></div>}
@@ -994,7 +1270,7 @@ export default function ICTInventoryPage() {
         )}
 
         {/* Internet Table */}
-        {activeTab === 'internet' && (
+        {isInternetTab && (
           loading
             ? <div className="py-10 text-center text-sm text-muted-foreground animate-pulse">Loading...</div>
             : filteredInternet.length === 0
@@ -1070,119 +1346,6 @@ export default function ICTInventoryPage() {
               )
         )}
 
-        {/* Submissions Table */}
-        {activeTab === 'submissions' && (
-          loading
-            ? <div className="py-10 text-center text-sm text-muted-foreground animate-pulse">Loading...</div>
-            : submissions.length === 0
-              ? <div className="border border-border bg-card py-12 text-center text-sm text-muted-foreground">No submissions found.</div>
-              : (
-                <div className="space-y-6">
-                  {/* Group by submitter role */}
-                  {(['requester', 'technician', 'it_admin', 'sysadmin'] as const).map(role => {
-                    const roleSubs = submissions.filter(s => s.submitter?.role === role);
-                    if (roleSubs.length === 0) return null;
-                    return (
-                      <div key={role} className="space-y-2">
-                        <div className="mono text-[10px] text-muted-foreground tracking-widest border-b border-border pb-2">
-                          SUBMITTED BY {role.replace('_', ' ').toUpperCase()} ({roleSubs.length})
-                        </div>
-                        <div className="border border-border bg-card overflow-x-auto">
-                          <table className="w-full text-sm whitespace-nowrap">
-                            <thead className="border-b border-border bg-muted/30">
-                              <tr>
-                                {['Type','Item','Location','Submitted By','Date','Actions'].map(h => (
-                                  <th key={h} className="px-4 py-2.5 text-left mono text-[10px] text-muted-foreground tracking-widest font-semibold">{h}</th>
-                                ))}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {roleSubs.map(s => {
-                                const isDevice = s.submission_type === 'device';
-                                const isOpen = expandedSubmission === s.id;
-                                return (
-                                  <>
-                                    <tr key={s.id} className="border-b border-border/50 last:border-0 hover:bg-muted/20">
-                                      <td className="px-4 py-2.5">
-                                        <div className="flex items-center gap-2">
-                                          {isDevice ? <Monitor className="w-3.5 h-3.5 text-primary" /> : <Wifi className="w-3.5 h-3.5 text-primary" />}
-                                          <span className="mono text-xs">{isDevice ? 'DEVICE' : 'INTERNET'}</span>
-                                        </div>
-                                      </td>
-                                      <td className="px-4 py-2.5 font-medium">
-                                        {isDevice ? `${s.brand ?? '—'} ${s.model ?? '—'}` : `${s.isp_name ?? '—'} — ${s.plan_name ?? '—'}`}
-                                      </td>
-                                      <td className="px-4 py-2.5 text-xs">{s.location ?? '—'}</td>
-                                      <td className="px-4 py-2.5 text-xs">{s.submitter?.full_name ?? s.submitter?.username ?? 'Unknown'}</td>
-                                      <td className="px-4 py-2.5 text-xs">{formatUtc8Date(s.created_at)}</td>
-                                      <td className="px-4 py-2.5">
-                                        <button onClick={() => setExpandedSubmission(isOpen ? null : s.id)}
-                                          className="flex items-center gap-1 text-xs text-primary hover:underline">
-                                          Details {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                                        </button>
-                                      </td>
-                                    </tr>
-                                    {isOpen && (
-                                      <tr key={`${s.id}-exp`} className="bg-muted/10 border-b border-border">
-                                        <td colSpan={6} className="px-6 py-3 space-y-3">
-                                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                                            {isDevice ? (
-                                              <>
-                                                {[
-                                                  ['Device Type', s.device_type],
-                                                  ['Serial No', s.serial_no],
-                                                  ['Asset Tag', s.asset_tag],
-                                                  ['CPU', s.cpu],
-                                                  ['GPU', s.gpu],
-                                                  ['RAM', s.ram_gb ? `${s.ram_gb} GB` : null],
-                                                  ['Storage', s.storage_gb ? `${s.storage_gb} GB ${s.storage_type ?? ''}` : null],
-                                                  ['OS', s.os],
-                                                  ['Purchase Date', s.purchase_date],
-                                                  ['Warranty', s.warranty_until],
-                                                  ['Assigned To', s.assigned_to],
-                                                ].filter(([,v]) => v).map(([l,v]) => (
-                                                  <div key={l as string}><span className="text-muted-foreground">{l}: </span><span className="font-medium">{v}</span></div>
-                                                ))}
-                                              </>
-                                            ) : (
-                                              <>
-                                                {[
-                                                  ['Plan Type', s.plan_type],
-                                                  ['Speed', s.subscribed_speed_mbps ? `${s.subscribed_speed_mbps} Mbps` : null],
-                                                  ['Monthly Cost', s.monthly_cost ? `₱${Number(s.monthly_cost).toLocaleString()}` : null],
-                                                  ['Contract', s.contract_start ? `${s.contract_start} → ${s.contract_end ?? 'Open'}` : null],
-                                                  ['Account No', s.account_no],
-                                                  ['Contact', s.contact_person],
-                                                  ['Contact No', s.contact_number],
-                                                ].filter(([,v]) => v).map(([l,v]) => (
-                                                  <div key={l as string}><span className="text-muted-foreground">{l}: </span><span className="font-medium">{v}</span></div>
-                                                ))}
-                                              </>
-                                            )}
-                                            {s.notes && (
-                                              <div className="col-span-2 md:col-span-4"><span className="text-muted-foreground">Notes: </span><span className="font-medium">{s.notes}</span></div>
-                                            )}
-                                          </div>
-                                          {s.admin_note && (
-                                            <div className="border border-border/50 bg-muted/10 px-3 py-2 text-xs">
-                                              <span className="mono text-[10px] text-muted-foreground">ADMIN NOTE: </span>{s.admin_note}
-                                            </div>
-                                          )}
-                                        </td>
-                                      </tr>
-                                    )}
-                                  </>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )
-        )}
       </div>
 
       {/* Device Dialog */}
@@ -1194,10 +1357,11 @@ export default function ICTInventoryPage() {
             </DialogTitle>
           </DialogHeader>
           <DeviceForm
-            initial={deviceDialog.editing ?? { ...EMPTY_DEVICE, device_type: activeTab as DeviceType }}
+            initial={deviceDialog.editing ?? { ...EMPTY_DEVICE, device_type: activeTab, office: profile?.office ?? '' }}
             onSave={handleSaveDevice}
             onClose={() => setDeviceDialog({ open: false, editing: null })}
-            routers={routers}
+            deviceTypes={deviceTypes}
+            storageTypes={storageTypes}
           />
         </DialogContent>
       </Dialog>
@@ -1218,6 +1382,14 @@ export default function ICTInventoryPage() {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Manage Choices — System Admin adds/removes Device Type and Storage Type */}
+      <ManageChoicesDialog
+        open={choicesOpen}
+        onOpenChange={setChoicesOpen}
+        options={options}
+        onChanged={reload}
+      />
 
       {/* Delete Confirm */}
       <AlertDialog open={!!deleteTarget} onOpenChange={o => { if (!o) setDeleteTarget(null); }}>

@@ -22,7 +22,7 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, RoleDescription> = {
     capabilities: [
       'Create and track own tickets',
       'Confirm resolution / reopen tickets',
-      'Submit ID requests and ICT inventory information',
+      'Submit ID requests and add records to the ICT inventory',
       'Request venue bookings for a single day or a multi-day period',
     ],
   },
@@ -32,7 +32,7 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, RoleDescription> = {
     capabilities: [
       'View all tickets and the Kanban board',
       'Work assigned tickets and update status',
-      'Review inventory submissions',
+      'Browse the ICT inventory and add device or internet records',
       'Request venue bookings for a single day or a multi-day period',
     ],
   },
@@ -43,6 +43,7 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, RoleDescription> = {
       'Everything a Technician can do',
       'View reports and inventory dashboards',
       'Manage categories, priorities, templates, and ID/ICT requests',
+      'Edit and delete ICT inventory records, and import/export them as CSV',
       'Request and approve venue bookings, and manage venues',
       'Read system configuration and audit log',
     ],
@@ -54,6 +55,7 @@ export const ROLE_DESCRIPTIONS: Record<UserRole, RoleDescription> = {
       'Everything an IT Admin can do',
       'Manage registered users and assign roles',
       'Deactivate or delete user accounts',
+      'Add or remove the Device Type and Storage Type choices in ICT Inventory',
       'Request and approve venue bookings, and manage venues',
       'Edit system configuration and delete tickets',
     ],

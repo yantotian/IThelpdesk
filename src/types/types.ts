@@ -171,21 +171,37 @@ export interface IDRequest {
 }
 
 // ── ICT Inventory ─────────────────────────────────────────────────────────────
-export type DeviceType = 'laptop' | 'desktop' | 'printer' | 'router';
 export type DeviceStatus = 'active' | 'inactive' | 'under_repair' | 'retired';
-export type StorageType = 'HDD' | 'SSD' | 'NVMe' | 'eMMC';
 export type PrinterType = 'inkjet' | 'laser' | 'dot_matrix' | 'thermal';
 export type RouterType = 'wired' | 'wireless' | 'fiber' | 'mesh';
 export type PlanType = 'fiber' | 'dsl' | 'cable' | 'wireless' | 'satellite';
 export type InternetStatus = 'active' | 'inactive' | 'suspended';
 
+/**
+ * Device Type and Storage Type are not fixed unions any more — the System
+ * Admin maintains the available choices in `ict_inventory_options`, so both
+ * columns are plain strings validated against that list.
+ */
+export type InventoryOptionType = 'device_type' | 'storage_type';
+
+export interface ICTInventoryOption {
+  id: string;
+  option_type: InventoryOptionType;
+  value: string;
+  label: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ICTDevice {
   id: string;
-  device_type: DeviceType;
+  device_type: string;
   brand: string;
   model: string;
   serial_no: string | null;
   asset_tag: string | null;
+  office: string | null;
   location: string | null;
   assigned_to: string | null;
   status: DeviceStatus;
@@ -194,7 +210,7 @@ export interface ICTDevice {
   gpu: string | null;
   ram_gb: number | null;
   storage_gb: number | null;
-  storage_type: StorageType | null;
+  storage_type: string | null;
   os: string | null;
   // printer
   printer_type: PrinterType | null;
@@ -261,56 +277,6 @@ export interface DeviceTicketLink {
   // joined
   ticket?: Pick<Ticket, 'id' | 'ticket_number' | 'subject' | 'status' | 'priority'>;
   linker?: Pick<Profile, 'id' | 'full_name' | 'username'>;
-}
-
-export type SubmissionStatus = 'pending' | 'approved' | 'rejected';
-
-export interface ICTInventorySubmission {
-  id: string;
-  submission_type: 'device' | 'internet';
-  submitted_by: string | null;
-  status: SubmissionStatus;
-  admin_note: string | null;
-  reviewed_by: string | null;
-  reviewed_at: string | null;
-  created_at: string;
-  // device fields
-  device_type?: string | null;
-  brand?: string | null;
-  model?: string | null;
-  serial_no?: string | null;
-  asset_tag?: string | null;
-  location?: string | null;
-  assigned_to?: string | null;
-  cpu?: string | null;
-  gpu?: string | null;
-  ram_gb?: number | null;
-  storage_gb?: number | null;
-  storage_type?: string | null;
-  os?: string | null;
-  printer_type?: string | null;
-  is_network_printer?: boolean | null;
-  router_type?: string | null;
-  wifi_standard?: string | null;
-  num_ports?: number | null;
-  purchase_date?: string | null;
-  warranty_until?: string | null;
-  // internet fields
-  isp_name?: string | null;
-  plan_name?: string | null;
-  plan_type?: string | null;
-  subscribed_speed_mbps?: number | null;
-  monthly_cost?: number | null;
-  contract_start?: string | null;
-  contract_end?: string | null;
-  account_no?: string | null;
-  contact_person?: string | null;
-  contact_number?: string | null;
-  // shared
-  notes?: string | null;
-  // joined
-  submitter?: Pick<Profile, 'id' | 'full_name' | 'username' | 'role'>;
-  reviewer?: Pick<Profile, 'id' | 'full_name' | 'username'>;
 }
 
 // ── Venue Booking ─────────────────────────────────────────────────────────────

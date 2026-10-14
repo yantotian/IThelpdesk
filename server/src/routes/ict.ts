@@ -6,7 +6,187 @@ import { apiLimiter } from '../middleware/rateLimit.js';
 const router = Router();
 router.use(apiLimiter, authMiddleware);
 
-// ── ICT Devices ──────────────────────────────────────────────────────────────
+// ── Shared helpers ──────────────────────────────────────────────────────────
+type Row = Record<string, unknown>;
+
+/** Typed payload handed to the INSERT statements below (postgres-js needs real
+ *  types on template parameters, so a plain Record<string, unknown> will not do). */
+type DeviceInsert = {
+  device_type: string; brand: string; model: string;
+  serial_no: string | null; asset_tag: string | null;
+  location: string | null; office: string | null; assigned_to: string | null;
+  status: string; cpu: string | null; gpu: string | null;
+  ram_gb: number | null; storage_gb: number | null; storage_type: string | null;
+  os: string | null; printer_type: string | null; is_network_printer: boolean;
+  router_type: string | null; wifi_standard: string | null; num_ports: number | null;
+  purchase_date: string | null; warranty_until: string | null; notes: string | null;
+};
+
+const DEVICE_STATUSES = ['active', 'inactive', 'under_repair', 'retired'];
+const PRINTER_TYPES = ['inkjet', 'laser', 'dot_matrix', 'thermal'];
+const ROUTER_TYPES = ['wired', 'wireless', 'fiber', 'mesh'];
+const PLAN_TYPES = ['fiber', 'dsl', 'cable', 'wireless', 'satellite'];
+const INTERNET_STATUSES = ['active', 'inactive', 'suspended'];
+const MAX_IMPORT_ROWS = 1000;
+
+function asText(v: unknown): string | null {
+  if (v === undefined || v === null) return null;
+  const s = String(v).trim();
+  return s === '' ? null : s;
+}
+
+function asNumber(v: unknown, label: string, errors: string[]): number | null {
+  const s = asText(v);
+  if (s === null) return null;
+  const n = Number(s);
+  if (!Number.isFinite(n)) {
+    errors.push(`${label} is not a number ("${s}")`);
+    return null;
+  }
+  return n;
+}
+
+function asInteger(v: unknown, label: string, errors: string[]): number | null {
+  const n = asNumber(v, label, errors);
+  return n === null ? null : Math.trunc(n);
+}
+
+/** Required text field: pushes a label-specific error and still returns a string
+ *  so the built record can stay fully typed. */
+function requiredText(d: Row, key: string, label: string, errors: string[]): string {
+  const v = asText(d[key]);
+  if (!v) errors.push(`${label} is required`);
+  return v ?? '';
+}
+
+function asBoolean(v: unknown): boolean {
+  return ['true', 'yes', 'y', '1'].includes((asText(v) ?? '').toLowerCase());
+}
+
+function asDate(v: unknown, label: string, errors: string[]): string | null {
+  const s = asText(v);
+  if (s === null) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    errors.push(`${label} must be formatted YYYY-MM-DD ("${s}")`);
+    return null;
+  }
+  return s;
+}
+
+interface OptionSets {
+  deviceType: Set<string>;
+  storageType: Set<string>;
+}
+
+async function loadOptionSets(): Promise<OptionSets> {
+  const rows = await sql`SELECT option_type, value FROM ict_inventory_options`;
+  const sets: OptionSets = { deviceType: new Set(), storageType: new Set() };
+  for (const r of rows) {
+    if (r.option_type === 'device_type') sets.deviceType.add(r.value);
+    else if (r.option_type === 'storage_type') sets.storageType.add(r.value);
+  }
+  return sets;
+}
+
+/**
+ * Normalises one device record coming from the Add form or a CSV import and
+ * reports every problem at once, so a bad row can be rejected with a message a
+ * user can act on instead of a 500 from the database.
+ */
+function buildDevice(d: Row, opts: OptionSets): { data?: DeviceInsert; error?: string } {
+  const errors: string[] = [];
+
+  const device_type = requiredText(d, 'device_type', 'Device type', errors);
+  if (device_type && !opts.deviceType.has(device_type)) {
+    errors.push(`Unknown device type "${device_type}" — add it under Manage Choices first`);
+  }
+
+  const brand = requiredText(d, 'brand', 'Brand', errors);
+  const model = requiredText(d, 'model', 'Model', errors);
+
+  const status = asText(d.status) ?? 'active';
+  if (!DEVICE_STATUSES.includes(status)) errors.push(`Unknown status "${status}"`);
+
+  const storage_type = asText(d.storage_type);
+  if (storage_type && !opts.storageType.has(storage_type)) {
+    errors.push(`Unknown storage type "${storage_type}" — add it under Manage Choices first`);
+  }
+
+  const printer_type = asText(d.printer_type);
+  if (printer_type && !PRINTER_TYPES.includes(printer_type)) errors.push(`Unknown printer type "${printer_type}"`);
+
+  const router_type = asText(d.router_type);
+  if (router_type && !ROUTER_TYPES.includes(router_type)) errors.push(`Unknown router type "${router_type}"`);
+
+  const ram_gb = asInteger(d.ram_gb, 'RAM (GB)', errors);
+  const storage_gb = asInteger(d.storage_gb, 'Storage (GB)', errors);
+  const num_ports = asInteger(d.num_ports, 'Ports', errors);
+  const purchase_date = asDate(d.purchase_date, 'Purchase date', errors);
+  const warranty_until = asDate(d.warranty_until, 'Warranty until', errors);
+
+  if (errors.length > 0) return { error: errors.join('; ') };
+
+  return {
+    data: {
+      device_type, brand, model,
+      serial_no: asText(d.serial_no), asset_tag: asText(d.asset_tag),
+      location: asText(d.location), office: asText(d.office),
+      assigned_to: asText(d.assigned_to), status,
+      cpu: asText(d.cpu), gpu: asText(d.gpu),
+      ram_gb, storage_gb, storage_type, os: asText(d.os),
+      printer_type,
+      is_network_printer: d.is_network_printer === undefined || d.is_network_printer === null
+        ? false
+        : asBoolean(d.is_network_printer),
+      router_type, wifi_standard: asText(d.wifi_standard), num_ports,
+      purchase_date, warranty_until, notes: asText(d.notes),
+    },
+  };
+}
+
+async function insertDevice(data: DeviceInsert, createdBy: string) {
+  const rows = await sql`
+    INSERT INTO ict_devices (device_type, brand, model, serial_no, asset_tag, location, office, assigned_to, status, cpu, gpu, ram_gb, storage_gb, storage_type, os, printer_type, is_network_printer, router_type, wifi_standard, num_ports, purchase_date, warranty_until, notes, created_by)
+    VALUES (${data.device_type}, ${data.brand}, ${data.model}, ${data.serial_no}, ${data.asset_tag}, ${data.location}, ${data.office}, ${data.assigned_to}, ${data.status}, ${data.cpu}, ${data.gpu}, ${data.ram_gb}, ${data.storage_gb}, ${data.storage_type}, ${data.os}, ${data.printer_type}, ${data.is_network_printer}, ${data.router_type}, ${data.wifi_standard}, ${data.num_ports}, ${data.purchase_date}, ${data.warranty_until}, ${data.notes}, ${createdBy})
+    RETURNING *
+  `;
+  return rows[0];
+}
+
+/**
+ * Any authenticated role may add inventory now, but the admins who used to
+ * review submissions are still told when a requester or technician records
+ * something.
+ */
+async function notifyInventoryAdd(user: NonNullable<AuthRequest['user']>, body: string) {
+  if (user.role !== 'requester' && user.role !== 'technician') return;
+  const admins = await sql`SELECT id FROM users WHERE role IN ('it_admin','sysadmin') AND is_active = true`;
+  const title = `Inventory added by ${user.full_name || user.username}`;
+  for (const admin of admins) {
+    await sql`
+      INSERT INTO notifications (user_id, ticket_id, type, title, body)
+      VALUES (${admin.id}, NULL, 'inventory_submission', ${title}, ${body})
+    `;
+  }
+}
+
+function badImportLength(rows: unknown, res: import('express').Response): boolean {
+  if (!Array.isArray(rows)) {
+    res.status(400).json({ error: 'Expected an array of rows' });
+    return true;
+  }
+  if (rows.length === 0) {
+    res.status(400).json({ error: 'The file has a header row but no data rows' });
+    return true;
+  }
+  if (rows.length > MAX_IMPORT_ROWS) {
+    res.status(400).json({ error: `Too many rows — the limit is ${MAX_IMPORT_ROWS} per import` });
+    return true;
+  }
+  return false;
+}
+
+// ── ICT Devices ─────────────────────────────────────────────────────────────
 
 router.get('/devices', async (req, res) => {
   try {
@@ -24,21 +204,59 @@ router.get('/devices', async (req, res) => {
   }
 });
 
-router.post('/devices', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, res) => {
+// Every role may add — this is what replaced the Submit Inventory page.
+router.post('/devices', async (req: AuthRequest, res) => {
   try {
-    const d = req.body;
-    const devices = await sql`
-      INSERT INTO ict_devices (device_type, brand, model, serial_no, asset_tag, location, assigned_to, status, cpu, gpu, ram_gb, storage_gb, storage_type, os, printer_type, is_network_printer, router_type, wifi_standard, num_ports, purchase_date, warranty_until, notes, created_by)
-      VALUES (${d.device_type}, ${d.brand}, ${d.model}, ${d.serial_no || null}, ${d.asset_tag || null}, ${d.location || null}, ${d.assigned_to || null}, ${d.status || 'active'}, ${d.cpu || null}, ${d.gpu || null}, ${d.ram_gb || null}, ${d.storage_gb || null}, ${d.storage_type || null}, ${d.os || null}, ${d.printer_type || null}, ${d.is_network_printer || false}, ${d.router_type || null}, ${d.wifi_standard || null}, ${d.num_ports || null}, ${d.purchase_date || null}, ${d.warranty_until || null}, ${d.notes || null}, ${req.user!.id})
-      RETURNING *
-    `;
-    res.status(201).json(devices[0]);
+    const opts = await loadOptionSets();
+    const { data, error } = buildDevice(req.body ?? {}, opts);
+    if (!data || error) {
+      res.status(400).json({ error: error || 'Invalid device' });
+      return;
+    }
+    const device = await insertDevice(data, req.user!.id);
+    await notifyInventoryAdd(req.user!, `New ${data.device_type}: ${data.brand} ${data.model}`);
+    res.status(201).json(device);
   } catch (error) {
     console.error('Create ICT device error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
+// Bulk create from a CSV produced by the Export CSV button on the same page.
+router.post('/devices/import', async (req: AuthRequest, res) => {
+  try {
+    const rows = req.body?.rows;
+    if (badImportLength(rows, res)) return;
+
+    const opts = await loadOptionSets();
+    const errors: { row: number; message: string }[] = [];
+    let created = 0;
+
+    for (let i = 0; i < rows.length; i++) {
+      const { data, error } = buildDevice((rows[i] ?? {}) as Row, opts);
+      if (!data || error) {
+        errors.push({ row: i + 1, message: error || 'Invalid row' });
+        continue;
+      }
+      try {
+        await insertDevice(data, req.user!.id);
+        created++;
+      } catch (e) {
+        errors.push({ row: i + 1, message: (e as Error).message || 'Could not save this row' });
+      }
+    }
+
+    if (created > 0) {
+      await notifyInventoryAdd(req.user!, `Imported ${created} device${created === 1 ? '' : 's'} from a CSV file`);
+    }
+    res.json({ created, failed: errors.length, errors });
+  } catch (error) {
+    console.error('Import ICT devices error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Editing and deleting stays with IT Admin / System Admin.
 router.put('/devices/:id', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
@@ -47,7 +265,8 @@ router.put('/devices/:id', requireRole('it_admin', 'sysadmin'), async (req: Auth
       UPDATE ict_devices SET
         device_type = ${d.device_type}, brand = ${d.brand}, model = ${d.model},
         serial_no = ${d.serial_no || null}, asset_tag = ${d.asset_tag || null},
-        location = ${d.location || null}, assigned_to = ${d.assigned_to || null},
+        location = ${d.location || null}, office = ${d.office || null},
+        assigned_to = ${d.assigned_to || null},
         status = ${d.status}, cpu = ${d.cpu || null}, gpu = ${d.gpu || null},
         ram_gb = ${d.ram_gb || null}, storage_gb = ${d.storage_gb || null},
         storage_type = ${d.storage_type || null}, os = ${d.os || null},
@@ -75,7 +294,88 @@ router.delete('/devices/:id', requireRole('it_admin', 'sysadmin'), async (req, r
   }
 });
 
-// ── ICT Internet ─────────────────────────────────────────────────────────────
+// ── Inventory choices (Device Type / Storage Type) ──────────────────────────
+
+router.get('/options', async (_req, res) => {
+  try {
+    const options = await sql`
+      SELECT * FROM ict_inventory_options
+      ORDER BY option_type, sort_order, created_at
+    `;
+    res.json(options);
+  } catch (error) {
+    console.error('Get inventory options error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/options', requireRole('sysadmin'), async (req, res) => {
+  try {
+    const option_type = asText(req.body?.option_type);
+    const value = asText(req.body?.value);
+
+    if (option_type !== 'device_type' && option_type !== 'storage_type') {
+      res.status(400).json({ error: 'option_type must be device_type or storage_type' });
+      return;
+    }
+    if (!value) {
+      res.status(400).json({ error: 'The choice cannot be empty' });
+      return;
+    }
+    if (value.length > 40) {
+      res.status(400).json({ error: 'The choice is too long (40 characters max)' });
+      return;
+    }
+    if (/[\r\n\t]/.test(value)) {
+      res.status(400).json({ error: 'The choice must be a single line of text' });
+      return;
+    }
+    if (option_type === 'device_type' && value.toLowerCase() === 'internet') {
+      res.status(400).json({ error: '"internet" is reserved for the Internet tab' });
+      return;
+    }
+
+    const existing = await sql`
+      SELECT id FROM ict_inventory_options
+      WHERE option_type = ${option_type} AND lower(value) = lower(${value})
+    `;
+    if (existing.length > 0) {
+      res.status(409).json({ error: `"${value}" is already one of the choices` });
+      return;
+    }
+
+    const next = await sql`
+      SELECT COALESCE(MAX(sort_order), 0) + 1 AS next
+      FROM ict_inventory_options WHERE option_type = ${option_type}
+    `;
+    const options = await sql`
+      INSERT INTO ict_inventory_options (option_type, value, label, sort_order)
+      VALUES (${option_type}, ${value}, ${value}, ${next[0].next})
+      RETURNING *
+    `;
+    res.status(201).json(options[0]);
+  } catch (error) {
+    console.error('Create inventory option error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.delete('/options/:id', requireRole('sysadmin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const removed = await sql`DELETE FROM ict_inventory_options WHERE id = ${id} RETURNING *`;
+    if (removed.length === 0) {
+      res.status(404).json({ error: 'Choice not found' });
+      return;
+    }
+    res.json({ message: `"${removed[0].value}" removed`, option: removed[0] });
+  } catch (error) {
+    console.error('Delete inventory option error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── ICT Internet ────────────────────────────────────────────────────────────
 
 router.get('/internet', async (_req, res) => {
   try {
@@ -93,17 +393,128 @@ router.get('/internet', async (_req, res) => {
   }
 });
 
-router.post('/internet', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, res) => {
+type InternetInsert = {
+  location: string; isp_name: string; plan_name: string; plan_type: string;
+  subscribed_speed_mbps: number; actual_dl_mbps: number | null; actual_ul_mbps: number | null;
+  monthly_cost: number | null; contract_start: string | null; contract_end: string | null;
+  account_no: string | null; contact_person: string | null; contact_number: string | null;
+  router_id: string | null; status: string; notes: string | null;
+};
+
+function buildInternet(d: Row, routers: Map<string, string>): { data?: InternetInsert; error?: string } {
+  const errors: string[] = [];
+
+  const location = requiredText(d, 'location', 'Location', errors);
+  const isp_name = requiredText(d, 'isp_name', 'ISP Name', errors);
+  const plan_name = requiredText(d, 'plan_name', 'Plan Name', errors);
+
+  const plan_type = asText(d.plan_type) ?? 'fiber';
+  if (!PLAN_TYPES.includes(plan_type)) errors.push(`Unknown plan type "${plan_type}"`);
+
+  const status = asText(d.status) ?? 'active';
+  if (!INTERNET_STATUSES.includes(status)) errors.push(`Unknown status "${status}"`);
+
+  if (asText(d.subscribed_speed_mbps) === null) errors.push('Subscribed speed is required');
+  const subscribed_speed_mbps = asInteger(d.subscribed_speed_mbps, 'Subscribed speed', errors);
+  const actual_dl_mbps = asNumber(d.actual_dl_mbps, 'DL speed', errors);
+  const actual_ul_mbps = asNumber(d.actual_ul_mbps, 'UL speed', errors);
+  const monthly_cost = asNumber(d.monthly_cost, 'Monthly cost', errors);
+  const contract_start = asDate(d.contract_start, 'Contract start', errors);
+  const contract_end = asDate(d.contract_end, 'Contract end', errors);
+
+  if (contract_start && contract_end && contract_end < contract_start) {
+    errors.push('Contract end cannot be before contract start');
+  }
+
+  if (errors.length > 0) return { error: errors.join('; ') };
+
+  // The export writes "Brand Model"; fall back to the asset tag / serial so a
+  // re-import of the same file restores the link rather than dropping it.
+  const routerText = asText(d.router);
+  const router_id = routerText ? routers.get(routerText.toLowerCase()) ?? null : null;
+
+  return {
+    data: {
+      location, isp_name, plan_name, plan_type, subscribed_speed_mbps: subscribed_speed_mbps ?? 0,
+      actual_dl_mbps, actual_ul_mbps, monthly_cost,
+      contract_start, contract_end,
+      account_no: asText(d.account_no),
+      contact_person: asText(d.contact_person),
+      contact_number: asText(d.contact_number),
+      router_id, status, notes: asText(d.notes),
+    },
+  };
+}
+
+async function loadRouterKeys(): Promise<Map<string, string>> {
+  const devices = await sql`SELECT id, brand, model, asset_tag, serial_no FROM ict_devices`;
+  const map = new Map<string, string>();
+  for (const d of devices) {
+    const keys = [
+      `${d.brand ?? ''} ${d.model ?? ''}`.trim(),
+      d.asset_tag ?? '',
+      d.serial_no ?? '',
+    ].filter(Boolean).map(k => k.toLowerCase());
+    for (const key of keys) if (!map.has(key)) map.set(key, d.id);
+  }
+  return map;
+}
+
+async function insertInternet(data: InternetInsert, createdBy: string) {
+  const rows = await sql`
+    INSERT INTO ict_internet (location, isp_name, plan_name, plan_type, subscribed_speed_mbps, actual_dl_mbps, actual_ul_mbps, monthly_cost, contract_start, contract_end, account_no, contact_person, contact_number, router_id, status, notes, created_by)
+    VALUES (${data.location}, ${data.isp_name}, ${data.plan_name}, ${data.plan_type}, ${data.subscribed_speed_mbps}, ${data.actual_dl_mbps}, ${data.actual_ul_mbps}, ${data.monthly_cost}, ${data.contract_start}, ${data.contract_end}, ${data.account_no}, ${data.contact_person}, ${data.contact_number}, ${data.router_id}, ${data.status}, ${data.notes}, ${createdBy})
+    RETURNING *
+  `;
+  return rows[0];
+}
+
+router.post('/internet', async (req: AuthRequest, res) => {
   try {
-    const d = req.body;
-    const connections = await sql`
-      INSERT INTO ict_internet (location, isp_name, plan_name, plan_type, subscribed_speed_mbps, actual_dl_mbps, actual_ul_mbps, monthly_cost, contract_start, contract_end, account_no, contact_person, contact_number, router_id, status, notes, created_by)
-      VALUES (${d.location}, ${d.isp_name}, ${d.plan_name}, ${d.plan_type}, ${d.subscribed_speed_mbps}, ${d.actual_dl_mbps || null}, ${d.actual_ul_mbps || null}, ${d.monthly_cost || null}, ${d.contract_start || null}, ${d.contract_end || null}, ${d.account_no || null}, ${d.contact_person || null}, ${d.contact_number || null}, ${d.router_id || null}, ${d.status || 'active'}, ${d.notes || null}, ${req.user!.id})
-      RETURNING *
-    `;
-    res.status(201).json(connections[0]);
+    const routers = await loadRouterKeys();
+    const { data, error } = buildInternet(req.body ?? {}, routers);
+    if (!data || error) {
+      res.status(400).json({ error: error || 'Invalid connection' });
+      return;
+    }
+    const connection = await insertInternet(data, req.user!.id);
+    await notifyInventoryAdd(req.user!, `New internet connection: ${data.isp_name} — ${data.plan_name}`);
+    res.status(201).json(connection);
   } catch (error) {
     console.error('Create ICT internet error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/internet/import', async (req: AuthRequest, res) => {
+  try {
+    const rows = req.body?.rows;
+    if (badImportLength(rows, res)) return;
+
+    const routers = await loadRouterKeys();
+    const errors: { row: number; message: string }[] = [];
+    let created = 0;
+
+    for (let i = 0; i < rows.length; i++) {
+      const { data, error } = buildInternet((rows[i] ?? {}) as Row, routers);
+      if (!data || error) {
+        errors.push({ row: i + 1, message: error || 'Invalid row' });
+        continue;
+      }
+      try {
+        await insertInternet(data, req.user!.id);
+        created++;
+      } catch (e) {
+        errors.push({ row: i + 1, message: (e as Error).message || 'Could not save this row' });
+      }
+    }
+
+    if (created > 0) {
+      await notifyInventoryAdd(req.user!, `Imported ${created} internet connection${created === 1 ? '' : 's'} from a CSV file`);
+    }
+    res.json({ created, failed: errors.length, errors });
+  } catch (error) {
+    console.error('Import ICT internet error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -202,7 +613,7 @@ router.get('/speed-tests', async (_req, res) => {
   }
 });
 
-// ── Device-Ticket Links ───────────────────────────────────────────────────────
+// ── Device-Ticket Links ─────────────────────────────────────────────────────
 
 router.get('/device-links/:deviceId', async (req, res) => {
   try {
@@ -246,98 +657,6 @@ router.delete('/device-links/:id', requireRole('it_admin', 'sysadmin'), async (r
     res.json({ message: 'Device ticket link deleted' });
   } catch (error) {
     console.error('Delete device ticket link error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── ICT Inventory Submissions ────────────────────────────────────────────────
-
-router.get('/submissions', async (req: AuthRequest, res) => {
-  try {
-    let submissions;
-    if (['it_admin', 'sysadmin'].includes(req.user!.role)) {
-      submissions = await sql`
-        SELECT s.*,
-          json_build_object('id', p.id, 'full_name', p.full_name, 'username', p.username, 'role', p.role) as submitter,
-          json_build_object('id', r.id, 'full_name', r.full_name, 'username', r.username) as reviewer
-        FROM ict_inventory_submissions s
-        LEFT JOIN users p ON s.submitted_by = p.id
-        LEFT JOIN users r ON s.reviewed_by = r.id
-        ORDER BY s.created_at DESC
-      `;
-    } else {
-      submissions = await sql`
-        SELECT s.*,
-          json_build_object('id', p.id, 'full_name', p.full_name, 'username', p.username, 'role', p.role) as submitter,
-          json_build_object('id', r.id, 'full_name', r.full_name, 'username', r.username) as reviewer
-        FROM ict_inventory_submissions s
-        LEFT JOIN users p ON s.submitted_by = p.id
-        LEFT JOIN users r ON s.reviewed_by = r.id
-        WHERE s.submitted_by = ${req.user!.id}
-        ORDER BY s.created_at DESC
-      `;
-    }
-    res.json(submissions);
-  } catch (error) {
-    console.error('Get submissions error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-router.post('/submissions', async (req: AuthRequest, res) => {
-  try {
-    const s = req.body;
-    const submissions = await sql`
-      INSERT INTO ict_inventory_submissions (submission_type, submitted_by, device_type, brand, model, serial_no, asset_tag, location, assigned_to, cpu, gpu, ram_gb, storage_gb, storage_type, os, printer_type, is_network_printer, router_type, wifi_standard, num_ports, purchase_date, warranty_until, isp_name, plan_name, plan_type, subscribed_speed_mbps, monthly_cost, contract_start, contract_end, account_no, contact_person, contact_number, notes)
-      VALUES (${s.submission_type}, ${req.user!.id}, ${s.device_type || null}, ${s.brand || null}, ${s.model || null}, ${s.serial_no || null}, ${s.asset_tag || null}, ${s.location || null}, ${s.assigned_to || null}, ${s.cpu || null}, ${s.gpu || null}, ${s.ram_gb || null}, ${s.storage_gb || null}, ${s.storage_type || null}, ${s.os || null}, ${s.printer_type || null}, ${s.is_network_printer || false}, ${s.router_type || null}, ${s.wifi_standard || null}, ${s.num_ports || null}, ${s.purchase_date || null}, ${s.warranty_until || null}, ${s.isp_name || null}, ${s.plan_name || null}, ${s.plan_type || null}, ${s.subscribed_speed_mbps || null}, ${s.monthly_cost || null}, ${s.contract_start || null}, ${s.contract_end || null}, ${s.account_no || null}, ${s.contact_person || null}, ${s.contact_number || null}, ${s.notes || null})
-      RETURNING *
-    `;
-
-    // Get submitter info for the notification body
-    const submitter = await sql`SELECT full_name, username FROM users WHERE id = ${req.user!.id}`;
-    const submitterName = submitter[0]?.full_name || submitter[0]?.username || 'Unknown';
-
-    // Get all IT admins and system admins to notify
-    const admins = await sql`
-      SELECT id FROM users
-      WHERE role IN ('it_admin', 'sysadmin') AND is_active = true
-    `;
-
-    // Create notification for each admin (monitoring copy)
-    const title = `Inventory submission from ${submitterName}`;
-    const body = s.submission_type === 'device'
-      ? `New device submission: ${s.brand ?? ''} ${s.model ?? ''}`
-      : `New internet submission: ${s.isp_name ?? ''} — ${s.plan_name ?? ''}`;
-
-    for (const admin of admins) {
-      await sql`
-        INSERT INTO notifications (user_id, ticket_id, type, title, body)
-        VALUES (${admin.id}, NULL, 'inventory_submission', ${title}, ${body})
-      `;
-    }
-
-    res.status(201).json(submissions[0]);
-  } catch (error) {
-    console.error('Create submission error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ── Review endpoint: monitoring-only, no approve/reject ───────────────────────
-router.put('/submissions/:id/review', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
-    const { admin_note } = req.body;
-    // Monitoring-only: only update admin note; status/approval flow removed
-    const submissions = await sql`
-      UPDATE ict_inventory_submissions
-      SET admin_note = ${admin_note || null}, reviewed_by = ${req.user!.id}, reviewed_at = now()
-      WHERE id = ${id}
-      RETURNING *
-    `;
-    res.json(submissions[0]);
-  } catch (error) {
-    console.error('Review submission error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

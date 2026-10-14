@@ -19,7 +19,6 @@ const IDRequestPage = lazy(() => import('@/pages/IDRequestPage'));
 const IDRequestsAdminPage = lazy(() => import('@/pages/admin/IDRequestsAdminPage'));
 const ICTInventoryPage = lazy(() => import('@/pages/admin/ICTInventoryPage'));
 const ICTDashboardPage = lazy(() => import('@/pages/admin/ICTDashboardPage'));
-const ICTSubmissionPage = lazy(() => import('@/pages/ICTSubmissionPage'));
 const VenueBookingPage = lazy(() => import('@/pages/VenueBookingPage'));
 const VenuesPage = lazy(() => import('@/pages/admin/VenuesPage'));
 const VenueBookingsReviewPage = lazy(() => import('@/pages/admin/VenueBookingsReviewPage'));
@@ -51,7 +50,6 @@ export const routes: RouteConfig[] = [
   { name: 'ID Requests',            path: '/admin/id-requests',         element: <IDRequestsAdminPage /> },
   { name: 'ICT Inventory',          path: '/admin/ict-inventory',       element: <ICTInventoryPage /> },
   { name: 'ICT Dashboard',          path: '/admin/ict-dashboard',       element: <ICTDashboardPage /> },
-  { name: 'Submit Inventory',       path: '/ict-submission',            element: <ICTSubmissionPage /> },
   { name: 'Venue Booking',          path: '/venues',                    element: <VenueBookingPage /> },
   { name: 'Venues',                 path: '/admin/venues',              element: <VenuesPage /> },
   { name: 'Booking Approvals',      path: '/admin/venue-bookings',      element: <VenueBookingsReviewPage /> },

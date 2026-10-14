@@ -172,21 +172,24 @@ CREATE TABLE IF NOT EXISTS id_requests (
 );
 
 -- ICT Devices
+-- device_type and storage_type are NOT constrained here: the allowed values are
+-- maintained in ict_inventory_options by the System Admin (see below).
 CREATE TABLE IF NOT EXISTS ict_devices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  device_type text NOT NULL CHECK (device_type IN ('laptop','desktop','printer','router')),
+  device_type text NOT NULL,
   brand text NOT NULL,
   model text NOT NULL,
   serial_no text,
   asset_tag text,
   location text,
+  office text,
   assigned_to text,
   status text NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive','under_repair','retired')),
   cpu text,
   gpu text,
   ram_gb integer,
   storage_gb integer,
-  storage_type text CHECK (storage_type IN ('HDD','SSD','NVMe','eMMC') OR storage_type IS NULL),
+  storage_type text,
   os text,
   printer_type text CHECK (printer_type IN ('inkjet','laser','dot_matrix','thermal') OR printer_type IS NULL),
   is_network_printer boolean DEFAULT false,
@@ -200,6 +203,50 @@ CREATE TABLE IF NOT EXISTS ict_devices (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Migration for databases created before device/storage types became
+-- configurable: drop the inline CHECK constraints that pinned them to a fixed
+-- set, and add the Office column captured at registration.
+ALTER TABLE ict_devices ADD COLUMN IF NOT EXISTS office text;
+DO $$ BEGIN
+  ALTER TABLE ict_devices DROP CONSTRAINT IF EXISTS ict_devices_device_type_check;
+  ALTER TABLE ict_devices DROP CONSTRAINT IF EXISTS ict_devices_storage_type_check;
+END $$;
+
+-- Configurable choices for the ICT Inventory form. option_type currently covers
+-- 'device_type' and 'storage_type'; the System Admin can add or delete values
+-- from the ICT Inventory page. Values are stored as they are typed because they
+-- are written straight into ict_devices.device_type / .storage_type.
+CREATE TABLE IF NOT EXISTS ict_inventory_options (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  option_type text NOT NULL CHECK (option_type IN ('device_type','storage_type')),
+  value text NOT NULL,
+  label text NOT NULL,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (option_type, value)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ict_inventory_options_type
+  ON ict_inventory_options(option_type, sort_order);
+
+-- Default choices, seeded once. The guard is "table is empty" rather than
+-- "this value is missing" so that a choice removed by the System Admin stays
+-- removed across restarts.
+INSERT INTO ict_inventory_options (option_type, value, label, sort_order)
+SELECT v.option_type, v.value, v.label, v.sort_order
+FROM (VALUES
+  ('device_type', 'laptop',  'Laptop',  1),
+  ('device_type', 'desktop', 'Desktop', 2),
+  ('device_type', 'printer', 'Printer', 3),
+  ('device_type', 'router',  'Router',  4),
+  ('storage_type', 'HDD',  'HDD', 1),
+  ('storage_type', 'SSD',  'SSD', 2),
+  ('storage_type', 'NVMe', 'NVMe', 3),
+  ('storage_type', 'eMMC', 'eMMC', 4)
+) AS v(option_type, value, label, sort_order)
+WHERE NOT EXISTS (SELECT 1 FROM ict_inventory_options);
 
 -- ICT Internet
 CREATE TABLE IF NOT EXISTS ict_internet (
@@ -255,7 +302,10 @@ CREATE TABLE IF NOT EXISTS device_ticket_links (
 CREATE INDEX IF NOT EXISTS idx_dtl_device_id ON device_ticket_links(device_id);
 CREATE INDEX IF NOT EXISTS idx_dtl_ticket_id ON device_ticket_links(ticket_id);
 
--- ICT Inventory submissions
+-- ICT Inventory submissions (retired)
+-- The "Submit Inventory" page and its API were removed; inventory records are
+-- written straight to ict_devices / ict_internet now. The table is kept so that
+-- rows captured before the change are not lost. Nothing writes to it.
 CREATE TABLE IF NOT EXISTS ict_inventory_submissions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   submission_type text NOT NULL CHECK (submission_type IN ('device','internet')),
@@ -411,6 +461,10 @@ CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users
 
 DROP TRIGGER IF EXISTS trg_ict_devices_updated_at ON ict_devices;
 CREATE TRIGGER trg_ict_devices_updated_at BEFORE UPDATE ON ict_devices
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS trg_ict_inventory_options_updated_at ON ict_inventory_options;
+CREATE TRIGGER trg_ict_inventory_options_updated_at BEFORE UPDATE ON ict_inventory_options
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 DROP TRIGGER IF EXISTS trg_ict_internet_updated_at ON ict_internet;

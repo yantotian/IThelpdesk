@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import {
   Menu, X, LayoutDashboard, Ticket, KanbanSquare, IdCard,
   MonitorSmartphone, Users, FolderTree, SlidersHorizontal,
-  Settings, ScrollText, BookTemplate, ServerCog, Send, LogOut, Wrench,
+  Settings, ScrollText, BookTemplate, ServerCog, LogOut, Wrench,
   CalendarDays, Building2, CalendarCheck,
 } from 'lucide-react';
 import type { UserRole } from '@/types/types';
@@ -38,7 +38,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: 'INVENTORY',
     items: [
       { to: '/id-request', label: 'ID REQUEST', icon: <IdCard className="w-4 h-4" />, roles: ['requester', 'it_admin', 'sysadmin'] },
-      { to: '/ict-submission', label: 'SUBMIT INVENTORY', icon: <Send className="w-4 h-4" />, roles: ['requester', 'it_admin', 'sysadmin'] },
+      { to: '/admin/ict-inventory', label: 'ICT INVENTORY', icon: <MonitorSmartphone className="w-4 h-4" />, roles: ['requester', 'technician', 'it_admin', 'sysadmin'] },
       { to: '/admin/ict-dashboard', label: 'ICT DASHBOARD', icon: <ServerCog className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
     ],
   },
@@ -59,7 +59,6 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/admin/audit', label: 'AUDIT LOG', icon: <ScrollText className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
       { to: '/admin/templates', label: 'TEMPLATES', icon: <BookTemplate className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
       { to: '/admin/id-requests', label: 'ID REQUESTS', icon: <IdCard className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
-      { to: '/admin/ict-inventory', label: 'ICT INVENTORY', icon: <MonitorSmartphone className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
       { to: '/admin/venues', label: 'VENUES', icon: <Building2 className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
     ],
   },

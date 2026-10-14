@@ -315,12 +315,16 @@ All primary keys are `uuid` (default `gen_random_uuid()`).
 | `notifications` | In-app notifications | `user_id` → `users` (cascade), `ticket_id` → `tickets`, `type`, `title`, `body`, `is_read` |
 | `system_config` | Runtime settings | `key` (text PK), `value`, `description` |
 | `audit_log` | Admin action history | `actor_id` → `users`, `table_name`, `record_id`, `action`, `old_data` (jsonb), `new_data` (jsonb), `ip_address` |
-| `ict_devices` | ICT inventory (laptops, desktops, printers, routers) | `device_type`, `brand`, `model`, `serial_no`, `asset_tag`, `location`, `assigned_to`, `status`, `cpu`, `gpu`, `ram_gb`, `storage_gb`, `storage_type`, `os`, `purchase_date`, `warranty_until` |
+| `ict_devices` | ICT inventory (laptops, desktops, printers, routers) | `device_type`, `brand`, `model`, `serial_no`, `asset_tag`, `location`, `office`, `assigned_to`, `status`, `cpu`, `gpu`, `ram_gb`, `storage_gb`, `storage_type`, `os`, `purchase_date`, `warranty_until` |
 | `ict_internet` | Internet/ISP subscriptions | `location`, `isp_name`, `plan_name`, `plan_type`, `subscribed_speed_mbps`, `actual_dl_mbps`, `actual_ul_mbps`, `monthly_cost`, `contract_start`, `contract_end`, `router_id` → `ict_devices`, `status` |
 | `speed_test_logs` | Bandwidth test history | `internet_id` → `ict_internet` (cascade), `tested_at`, `dl_mbps`, `ul_mbps`, `latency_ms`, `tested_by` |
 | `device_ticket_links` | Links devices to tickets | `device_id` → `ict_devices`, `ticket_id` → `tickets`, `linked_by`, `note`, `UNIQUE(device_id, ticket_id)` |
-| `ict_inventory_submissions` | Pending user-submitted inventory | `submission_type`, `submitted_by`, `status`, `admin_note`, `reviewed_by`, `reviewed_at`, plus flattened device/internet fields |
+| `ict_inventory_options` | Admin-editable Device Type / Storage Type choices | `option_type` (`device_type` \| `storage_type`), `value`, `UNIQUE(option_type, value)` — seeded once on an empty table, so added/deleted choices persist across restarts |
 | `id_requests` | Employee ID card requests | `requester_id` → `users`, `office_name`, `full_name`, `id_number`, `position`, `address`, `emergency_name`, `emergency_contact`, `photo_url`, `signature_url`, `status`, `is_paid` |
+
+`ict_inventory_submissions` is **retired**: the Submit Inventory page and its
+API are gone, and every role now writes straight to `ict_devices`/`ict_internet`.
+The table is still declared in `schema.sql` so historical rows are not dropped.
 
 ### Triggers & functions
 
@@ -408,22 +412,27 @@ is no `Form`/`FormField` wrapper. Every form is a plain React component that:
 
 `src/pages/CreateTicketPage.tsx` is the reference implementation to copy.
 
-### The ICT Inventory Submissions feature
+### The ICT Inventory feature
 
-The best end-to-end example of a new form with its own table is the ICT
-inventory submission flow. Replicate it when adding a form:
+The best end-to-end example of a table shared by several layers of the app is
+the ICT Inventory module (the old Submit Inventory page was folded into it).
+Replicate its layout when adding a feature:
 
 | Layer | File |
 | --- | --- |
-| Table | `server/src/db/schema.sql` (`ict_inventory_submissions`, ~line 258) |
-| API routes | `server/src/routes/ict.ts` (submissions section, ~line 255) |
+| Tables | `server/src/db/schema.sql` (`ict_devices`, `ict_internet`, `ict_inventory_options`) |
+| API routes | `server/src/routes/ict.ts` (devices, internet, CSV import, options) |
 | Route mounting | `server/src/index.ts` (`app.use('/api/ict', ...)`) |
-| Frontend API | `src/lib/api.ts` (`getMySubmissions`, `createInventorySubmission`, ...) |
-| Types | `src/types/types.ts` (`ICTInventorySubmission`) |
-| User page | `src/pages/ICTSubmissionPage.tsx` |
-| Admin review | `src/pages/admin/ICTInventoryPage.tsx` (Submissions tab) |
+| Frontend API | `src/lib/api.ts` (`getICTDevices`, `importICTDevices`, `createICTOption`, ...) |
+| CSV helpers | `src/lib/csv.ts` (`buildCsv`/`parseCsv` — export and import share the same columns) |
+| Types | `src/types/types.ts` (`ICTDevice`, `ICTInternet`, `ICTInventoryOption`) |
+| Page | `src/pages/admin/ICTInventoryPage.tsx` (tabs, form, CSV import/export, Manage Choices) |
 | Routing | `src/routes.tsx` |
-| Navigation | `src/components/layouts/MainLayout.tsx` (`NAV_GROUPS`) |
+| Navigation | `src/components/layouts/MainLayout.tsx` (`NAV_GROUPS`, visible to all four roles) |
+
+Anyone may add or import records; only `it_admin` and `sysadmin` may edit or
+delete them, and only `sysadmin` may add/remove Device Type and Storage Type
+choices (server-enforced by `requireRole` on `POST`/`DELETE /options`).
 
 ### Step by step
 
@@ -460,8 +469,8 @@ inventory submission flow. Replicate it when adding a form:
    `src/routes.tsx`, then add a `NAV_GROUPS` item in
    `src/components/layouts/MainLayout.tsx` with the `roles` allowed to see it.
 7. **(Optional) Admin review.** For an approval workflow, add an admin page
-   under `src/pages/admin/` modelled on the Submissions tab of
-   `ICTInventoryPage.tsx`.
+   under `src/pages/admin/` modelled on `ICTInventoryPage.tsx` (list + form +
+   guarded mutations).
 
 File uploads (photos, signatures) go through a separate multipart endpoint:
 `src/lib/api.ts` `submitIDRequest` shows the flow (`api.upload('/upload/<bucket>', formData)`
