@@ -421,7 +421,7 @@ inventory submission flow. Replicate it when adding a form:
 | Frontend API | `src/lib/api.ts` (`getMySubmissions`, `createInventorySubmission`, ...) |
 | Types | `src/types/types.ts` (`ICTInventorySubmission`) |
 | User page | `src/pages/ICTSubmissionPage.tsx` |
-| Admin review | `src/pages/admin/ICTSubmissionsReviewPage.tsx` |
+| Admin review | `src/pages/admin/ICTInventoryPage.tsx` (Submissions tab) |
 | Routing | `src/routes.tsx` |
 | Navigation | `src/components/layouts/MainLayout.tsx` (`NAV_GROUPS`) |
 
@@ -460,7 +460,8 @@ inventory submission flow. Replicate it when adding a form:
    `src/routes.tsx`, then add a `NAV_GROUPS` item in
    `src/components/layouts/MainLayout.tsx` with the `roles` allowed to see it.
 7. **(Optional) Admin review.** For an approval workflow, add an admin page
-   under `src/pages/admin/` modelled on `ICTSubmissionsReviewPage.tsx`.
+   under `src/pages/admin/` modelled on the Submissions tab of
+   `ICTInventoryPage.tsx`.
 
 File uploads (photos, signatures) go through a separate multipart endpoint:
 `src/lib/api.ts` `submitIDRequest` shows the flow (`api.upload('/upload/<bucket>', formData)`

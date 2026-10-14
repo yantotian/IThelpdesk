@@ -136,7 +136,7 @@ export interface AppNotification {
   id: string;
   user_id: string;
   ticket_id: string | null;
-  type: 'sla_breach' | 'assignment' | 'comment' | 'status_change' | 'system' | 'booking';
+  type: 'sla_breach' | 'assignment' | 'comment' | 'status_change' | 'system' | 'booking' | 'inventory_submission';
   title: string;
   body: string | null;
   is_read: boolean;
@@ -309,7 +309,7 @@ export interface ICTInventorySubmission {
   // shared
   notes?: string | null;
   // joined
-  submitter?: Pick<Profile, 'id' | 'full_name' | 'username'>;
+  submitter?: Pick<Profile, 'id' | 'full_name' | 'username' | 'role'>;
   reviewer?: Pick<Profile, 'id' | 'full_name' | 'username'>;
 }
 

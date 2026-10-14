@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import {
   Monitor, Laptop, Printer, Router, Wifi, Plus, Pencil, Trash2,
   Search, RefreshCw, ChevronDown, ChevronUp, FileDown, Activity,
-  Link2, Unlink, Gauge,
+  Link2, Unlink, Gauge, ClipboardList,
 } from 'lucide-react';
 import {
   getICTDevices, createICTDevice, updateICTDevice, deleteICTDevice,
@@ -19,8 +19,9 @@ import {
   getSpeedTestLogs, createSpeedTestLog, deleteSpeedTestLog,
   getDeviceTicketLinks, createDeviceTicketLink, deleteDeviceTicketLink,
   searchTickets,
+  getAllSubmissions,
 } from '@/lib/api';
-import type { ICTDevice, ICTInternet, DeviceType, SpeedTestLog, DeviceTicketLink } from '@/types/types';
+import type { ICTDevice, ICTInternet, DeviceType, SpeedTestLog, DeviceTicketLink, ICTInventorySubmission } from '@/types/types';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid,
@@ -28,12 +29,13 @@ import {
 import { formatUtc8Date, formatUtc8ShortDate, formatUtc8DateTime, formatUtc8DateStamp } from '@/lib/utils';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-const DEVICE_TABS: { key: DeviceType | 'internet'; label: string; icon: React.ReactNode }[] = [
-  { key: 'laptop',   label: 'Laptops',   icon: <Laptop  className="w-4 h-4" /> },
-  { key: 'desktop',  label: 'Desktops',  icon: <Monitor className="w-4 h-4" /> },
-  { key: 'printer',  label: 'Printers',  icon: <Printer className="w-4 h-4" /> },
-  { key: 'router',   label: 'Routers',   icon: <Router  className="w-4 h-4" /> },
-  { key: 'internet', label: 'Internet',  icon: <Wifi    className="w-4 h-4" /> },
+const DEVICE_TABS: { key: DeviceType | 'internet' | 'submissions'; label: string; icon: React.ReactNode }[] = [
+  { key: 'laptop',     label: 'Laptops',     icon: <Laptop  className="w-4 h-4" /> },
+  { key: 'desktop',    label: 'Desktops',    icon: <Monitor className="w-4 h-4" /> },
+  { key: 'printer',    label: 'Printers',    icon: <Printer className="w-4 h-4" /> },
+  { key: 'router',     label: 'Routers',     icon: <Router  className="w-4 h-4" /> },
+  { key: 'internet',   label: 'Internet',    icon: <Wifi    className="w-4 h-4" /> },
+  { key: 'submissions', label: 'Submissions', icon: <ClipboardList className="w-4 h-4" /> },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -720,10 +722,11 @@ export default function ICTInventoryPage() {
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'it_admin' || profile?.role === 'sysadmin';
 
-  const [activeTab, setActiveTab] = useState<DeviceType | 'internet'>('laptop');
+  const [activeTab, setActiveTab] = useState<DeviceType | 'internet' | 'submissions'>('laptop');
   const [devices, setDevices] = useState<ICTDevice[]>([]);
   const [internet, setInternet] = useState<ICTInternet[]>([]);
   const [routers, setRouters] = useState<ICTDevice[]>([]);
+  const [submissions, setSubmissions] = useState<ICTInventorySubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -733,18 +736,21 @@ export default function ICTInventoryPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; type: 'device' | 'internet' } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [expandedSubmission, setExpandedSubmission] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const [devs, nets, rts] = await Promise.all([
-        getICTDevices(activeTab !== 'internet' ? activeTab : undefined),
+      const [devs, nets, rts, subs] = await Promise.all([
+        getICTDevices(activeTab !== 'internet' && activeTab !== 'submissions' ? activeTab : undefined),
         activeTab === 'internet' ? getICTInternet() : Promise.resolve([] as ICTInternet[]),
         getICTDevices('router'),
+        getAllSubmissions(),
       ]);
       setDevices(devs);
       setInternet(nets);
       setRouters(rts);
+      setSubmissions(subs);
     } catch (e: any) { toast.error(e.message); }
     setLoading(false);
   }, [activeTab]);
@@ -1060,6 +1066,120 @@ export default function ICTInventoryPage() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )
+        )}
+
+        {/* Submissions Table */}
+        {activeTab === 'submissions' && (
+          loading
+            ? <div className="py-10 text-center text-sm text-muted-foreground animate-pulse">Loading...</div>
+            : submissions.length === 0
+              ? <div className="border border-border bg-card py-12 text-center text-sm text-muted-foreground">No submissions found.</div>
+              : (
+                <div className="space-y-6">
+                  {/* Group by submitter role */}
+                  {(['requester', 'technician', 'it_admin', 'sysadmin'] as const).map(role => {
+                    const roleSubs = submissions.filter(s => s.submitter?.role === role);
+                    if (roleSubs.length === 0) return null;
+                    return (
+                      <div key={role} className="space-y-2">
+                        <div className="mono text-[10px] text-muted-foreground tracking-widest border-b border-border pb-2">
+                          SUBMITTED BY {role.replace('_', ' ').toUpperCase()} ({roleSubs.length})
+                        </div>
+                        <div className="border border-border bg-card overflow-x-auto">
+                          <table className="w-full text-sm whitespace-nowrap">
+                            <thead className="border-b border-border bg-muted/30">
+                              <tr>
+                                {['Type','Item','Location','Submitted By','Date','Actions'].map(h => (
+                                  <th key={h} className="px-4 py-2.5 text-left mono text-[10px] text-muted-foreground tracking-widest font-semibold">{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {roleSubs.map(s => {
+                                const isDevice = s.submission_type === 'device';
+                                const isOpen = expandedSubmission === s.id;
+                                return (
+                                  <>
+                                    <tr key={s.id} className="border-b border-border/50 last:border-0 hover:bg-muted/20">
+                                      <td className="px-4 py-2.5">
+                                        <div className="flex items-center gap-2">
+                                          {isDevice ? <Monitor className="w-3.5 h-3.5 text-primary" /> : <Wifi className="w-3.5 h-3.5 text-primary" />}
+                                          <span className="mono text-xs">{isDevice ? 'DEVICE' : 'INTERNET'}</span>
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-2.5 font-medium">
+                                        {isDevice ? `${s.brand ?? '—'} ${s.model ?? '—'}` : `${s.isp_name ?? '—'} — ${s.plan_name ?? '—'}`}
+                                      </td>
+                                      <td className="px-4 py-2.5 text-xs">{s.location ?? '—'}</td>
+                                      <td className="px-4 py-2.5 text-xs">{s.submitter?.full_name ?? s.submitter?.username ?? 'Unknown'}</td>
+                                      <td className="px-4 py-2.5 text-xs">{formatUtc8Date(s.created_at)}</td>
+                                      <td className="px-4 py-2.5">
+                                        <button onClick={() => setExpandedSubmission(isOpen ? null : s.id)}
+                                          className="flex items-center gap-1 text-xs text-primary hover:underline">
+                                          Details {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                        </button>
+                                      </td>
+                                    </tr>
+                                    {isOpen && (
+                                      <tr key={`${s.id}-exp`} className="bg-muted/10 border-b border-border">
+                                        <td colSpan={6} className="px-6 py-3 space-y-3">
+                                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                                            {isDevice ? (
+                                              <>
+                                                {[
+                                                  ['Device Type', s.device_type],
+                                                  ['Serial No', s.serial_no],
+                                                  ['Asset Tag', s.asset_tag],
+                                                  ['CPU', s.cpu],
+                                                  ['GPU', s.gpu],
+                                                  ['RAM', s.ram_gb ? `${s.ram_gb} GB` : null],
+                                                  ['Storage', s.storage_gb ? `${s.storage_gb} GB ${s.storage_type ?? ''}` : null],
+                                                  ['OS', s.os],
+                                                  ['Purchase Date', s.purchase_date],
+                                                  ['Warranty', s.warranty_until],
+                                                  ['Assigned To', s.assigned_to],
+                                                ].filter(([,v]) => v).map(([l,v]) => (
+                                                  <div key={l as string}><span className="text-muted-foreground">{l}: </span><span className="font-medium">{v}</span></div>
+                                                ))}
+                                              </>
+                                            ) : (
+                                              <>
+                                                {[
+                                                  ['Plan Type', s.plan_type],
+                                                  ['Speed', s.subscribed_speed_mbps ? `${s.subscribed_speed_mbps} Mbps` : null],
+                                                  ['Monthly Cost', s.monthly_cost ? `₱${Number(s.monthly_cost).toLocaleString()}` : null],
+                                                  ['Contract', s.contract_start ? `${s.contract_start} → ${s.contract_end ?? 'Open'}` : null],
+                                                  ['Account No', s.account_no],
+                                                  ['Contact', s.contact_person],
+                                                  ['Contact No', s.contact_number],
+                                                ].filter(([,v]) => v).map(([l,v]) => (
+                                                  <div key={l as string}><span className="text-muted-foreground">{l}: </span><span className="font-medium">{v}</span></div>
+                                                ))}
+                                              </>
+                                            )}
+                                            {s.notes && (
+                                              <div className="col-span-2 md:col-span-4"><span className="text-muted-foreground">Notes: </span><span className="font-medium">{s.notes}</span></div>
+                                            )}
+                                          </div>
+                                          {s.admin_note && (
+                                            <div className="border border-border/50 bg-muted/10 px-3 py-2 text-xs">
+                                              <span className="mono text-[10px] text-muted-foreground">ADMIN NOTE: </span>{s.admin_note}
+                                            </div>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )
         )}

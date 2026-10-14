@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   ticket_id uuid REFERENCES tickets(id) ON DELETE CASCADE,
-  type text NOT NULL CHECK (type IN ('sla_breach','assignment','comment','status_change','system')),
+  type text NOT NULL CHECK (type IN ('sla_breach','assignment','comment','status_change','system','booking','inventory_submission')),
   title text NOT NULL,
   body text,
   is_read boolean NOT NULL DEFAULT false,
@@ -348,13 +348,13 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_venue_bookings_venue_date ON venue_bookings(venue_id, booking_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_venue_bookings_status ON venue_bookings(status);
 
--- Extend the notification type union to cover venue bookings.
--- The original constraint was defined inline (Postgres named it
+-- Extend the notification type union to cover venue bookings and inventory
+-- submissions. The original constraint was defined inline (Postgres named it
 -- notifications_type_check), so drop-and-add is the idempotent way to widen it.
 DO $$ BEGIN
   ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check;
   ALTER TABLE notifications ADD CONSTRAINT notifications_type_check
-    CHECK (type IN ('sla_breach','assignment','comment','status_change','system','booking'));
+    CHECK (type IN ('sla_breach','assignment','comment','status_change','system','booking','inventory_submission'));
 END $$;
 
 -- Seed: example venues. Admin-customisable, so just create a small starting set

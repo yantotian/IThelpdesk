@@ -60,7 +60,6 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/admin/templates', label: 'TEMPLATES', icon: <BookTemplate className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
       { to: '/admin/id-requests', label: 'ID REQUESTS', icon: <IdCard className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
       { to: '/admin/ict-inventory', label: 'ICT INVENTORY', icon: <MonitorSmartphone className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
-      { to: '/admin/ict-submissions', label: 'SUBMISSIONS', icon: <Wrench className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
       { to: '/admin/venues', label: 'VENUES', icon: <Building2 className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
     ],
   },

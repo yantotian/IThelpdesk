@@ -243,10 +243,6 @@ export async function createInventorySubmission(payload: Omit<ICTInventorySubmis
   return api.post<ICTInventorySubmission>('/ict/submissions', payload);
 }
 
-export async function reviewInventorySubmission(id: string, status: 'approved' | 'rejected', admin_note?: string) {
-  return api.put<ICTInventorySubmission>(`/ict/submissions/${id}/review`, { status, admin_note });
-}
-
 export async function getIDRequestCount(): Promise<number> {
   const result = await api.get<{ count: number }>('/id-requests/count');
   return result.count;

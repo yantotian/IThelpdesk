@@ -141,8 +141,6 @@ router.delete('/internet/:id', requireRole('it_admin', 'sysadmin'), async (req, 
   }
 });
 
-// ── Speed Test Logs ──────────────────────────────────────────────────────────
-
 router.get('/speed-tests/:internetId', async (req, res) => {
   try {
     const { internetId } = req.params;
@@ -260,7 +258,7 @@ router.get('/submissions', async (req: AuthRequest, res) => {
     if (['it_admin', 'sysadmin'].includes(req.user!.role)) {
       submissions = await sql`
         SELECT s.*,
-          json_build_object('id', p.id, 'full_name', p.full_name, 'username', p.username) as submitter,
+          json_build_object('id', p.id, 'full_name', p.full_name, 'username', p.username, 'role', p.role) as submitter,
           json_build_object('id', r.id, 'full_name', r.full_name, 'username', r.username) as reviewer
         FROM ict_inventory_submissions s
         LEFT JOIN users p ON s.submitted_by = p.id
@@ -270,7 +268,7 @@ router.get('/submissions', async (req: AuthRequest, res) => {
     } else {
       submissions = await sql`
         SELECT s.*,
-          json_build_object('id', p.id, 'full_name', p.full_name, 'username', p.username) as submitter,
+          json_build_object('id', p.id, 'full_name', p.full_name, 'username', p.username, 'role', p.role) as submitter,
           json_build_object('id', r.id, 'full_name', r.full_name, 'username', r.username) as reviewer
         FROM ict_inventory_submissions s
         LEFT JOIN users p ON s.submitted_by = p.id
@@ -294,6 +292,30 @@ router.post('/submissions', async (req: AuthRequest, res) => {
       VALUES (${s.submission_type}, ${req.user!.id}, ${s.device_type || null}, ${s.brand || null}, ${s.model || null}, ${s.serial_no || null}, ${s.asset_tag || null}, ${s.location || null}, ${s.assigned_to || null}, ${s.cpu || null}, ${s.gpu || null}, ${s.ram_gb || null}, ${s.storage_gb || null}, ${s.storage_type || null}, ${s.os || null}, ${s.printer_type || null}, ${s.is_network_printer || false}, ${s.router_type || null}, ${s.wifi_standard || null}, ${s.num_ports || null}, ${s.purchase_date || null}, ${s.warranty_until || null}, ${s.isp_name || null}, ${s.plan_name || null}, ${s.plan_type || null}, ${s.subscribed_speed_mbps || null}, ${s.monthly_cost || null}, ${s.contract_start || null}, ${s.contract_end || null}, ${s.account_no || null}, ${s.contact_person || null}, ${s.contact_number || null}, ${s.notes || null})
       RETURNING *
     `;
+
+    // Get submitter info for the notification body
+    const submitter = await sql`SELECT full_name, username FROM users WHERE id = ${req.user!.id}`;
+    const submitterName = submitter[0]?.full_name || submitter[0]?.username || 'Unknown';
+
+    // Get all IT admins and system admins to notify
+    const admins = await sql`
+      SELECT id FROM users
+      WHERE role IN ('it_admin', 'sysadmin') AND is_active = true
+    `;
+
+    // Create notification for each admin (monitoring copy)
+    const title = `Inventory submission from ${submitterName}`;
+    const body = s.submission_type === 'device'
+      ? `New device submission: ${s.brand ?? ''} ${s.model ?? ''}`
+      : `New internet submission: ${s.isp_name ?? ''} — ${s.plan_name ?? ''}`;
+
+    for (const admin of admins) {
+      await sql`
+        INSERT INTO notifications (user_id, ticket_id, type, title, body)
+        VALUES (${admin.id}, NULL, 'inventory_submission', ${title}, ${body})
+      `;
+    }
+
     res.status(201).json(submissions[0]);
   } catch (error) {
     console.error('Create submission error:', error);
@@ -301,17 +323,15 @@ router.post('/submissions', async (req: AuthRequest, res) => {
   }
 });
 
+// ── Review endpoint: monitoring-only, no approve/reject ───────────────────────
 router.put('/submissions/:id/review', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const { status, admin_note } = req.body;
-    if (!['approved', 'rejected'].includes(status)) {
-      res.status(400).json({ error: 'Invalid status' });
-      return;
-    }
+    const { admin_note } = req.body;
+    // Monitoring-only: only update admin note; status/approval flow removed
     const submissions = await sql`
       UPDATE ict_inventory_submissions
-      SET status = ${status}, admin_note = ${admin_note || null}, reviewed_by = ${req.user!.id}, reviewed_at = now()
+      SET admin_note = ${admin_note || null}, reviewed_by = ${req.user!.id}, reviewed_at = now()
       WHERE id = ${id}
       RETURNING *
     `;
