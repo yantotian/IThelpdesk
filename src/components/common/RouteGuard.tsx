@@ -18,7 +18,14 @@ const PUBLIC_ROUTES = [...SYSTEM_PUBLIC_ROUTES, ...routePublicPaths];
 function matchPublicRoute(path: string, patterns: string[]) {
   return patterns.some(pattern => {
     if (pattern.includes('*')) {
-      const regex = new RegExp('^' + pattern.replace('*', '.*') + '$');
+      // Escape regex metacharacters in each literal segment, then join the
+      // segments on '.*' so every '*' wildcard is handled (String.replace with
+      // a string pattern only replaces the first occurrence).
+      const source = pattern
+        .split('*')
+        .map(segment => segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .join('.*');
+      const regex = new RegExp('^' + source + '$');
       return regex.test(path);
     }
     return path === pattern;
