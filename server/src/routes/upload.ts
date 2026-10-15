@@ -36,13 +36,22 @@ const withinUploadDir = (abs: string) => {
   return resolved === root || resolved.startsWith(root + path.sep);
 };
 
-/** Unlink only files that provably live inside the upload root. */
+/**
+ * Unlink only files that provably live inside the upload root.
+ *
+ * Follows the containment pattern from the js/path-injection guidance:
+ * normalize with path.resolve + fs.realpathSync FIRST, reject anything that
+ * does not start with the canonical root, then pass that exact guarded value
+ * to the sink — the guard and the sink operate on the same normalized value.
+ */
 const safeUnlink = (abs: string) => {
-  if (!withinUploadDir(abs)) return;
   try {
-    fs.unlinkSync(abs);
+    const root = fs.realpathSync(path.resolve(uploadDir));
+    const target = fs.realpathSync(path.resolve(abs));
+    if (!target.startsWith(root + path.sep)) return;
+    fs.unlinkSync(target);
   } catch {
-    /* already gone — nothing to clean up */
+    /* outside the upload root, or already gone — nothing to clean up */
   }
 };
 
