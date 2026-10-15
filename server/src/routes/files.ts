@@ -13,17 +13,6 @@ const uploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
 const isAdmin = (role: string) => role === 'it_admin' || role === 'sysadmin';
 
 /**
- * Resolve a caller-relative path to an absolute path, refusing anything that
- * escapes UPLOAD_DIR (path traversal, absolute paths, symlink tricks).
- */
-function resolveSafePath(relPath: string): string | null {
-  const root = path.resolve(uploadDir);
-  const full = path.resolve(root, relPath);
-  if (full !== root && !full.startsWith(root + path.sep)) return null;
-  return full;
-}
-
-/**
  * Mirror the Supabase storage policies that migration 00009 put in place:
  *  - ticket attachments: ticket participants (requester/assignee) + admins
  *  - ID photos / signatures: owner only + admins (these hold PII)
@@ -69,18 +58,30 @@ router.post('/sign', apiLimiter, authMiddleware, async (req: AuthRequest, res) =
       return;
     }
 
-    const full = resolveSafePath(relPath);
-    if (!full || !fs.existsSync(full)) {
+    // Normalize FIRST, then guard the exact value that reaches the fs sinks
+    // (the js/path-injection containment pattern): anything escaping
+    // UPLOAD_DIR — traversal segments or an absolute path — is refused here,
+    // before fs.existsSync ever sees it.
+    const root = path.resolve(uploadDir);
+    const full = path.resolve(root, relPath);
+    if (!full.startsWith(root + path.sep)) {
       res.status(404).json({ error: 'File not found' });
       return;
     }
+    if (!fs.existsSync(full)) {
+      res.status(404).json({ error: 'File not found' });
+      return;
+    }
+    // Canonical relative path used for the authorization check and the token,
+    // so './x/../x' style input cannot bypass DB lookups by string mismatch.
+    const normRel = path.relative(root, full).split(path.sep).join('/');
 
-    if (!(await canAccess(relPath, req.user!))) {
+    if (!(await canAccess(normRel, req.user!))) {
       res.status(403).json({ error: 'Access denied' });
       return;
     }
 
-    const token = createFileToken(relPath);
+    const token = createFileToken(normRel);
     res.json({ url: `/api/files/${token}`, expires_in: 3600 });
   } catch (error) {
     console.error('Sign file error:', error);
@@ -96,8 +97,15 @@ router.get('/:token', async (req, res) => {
     return;
   }
 
-  const full = resolveSafePath(payload.p);
-  if (!full || !fs.existsSync(full)) {
+  // Same containment guard as the /sign route: normalize first, reject
+  // anything outside UPLOAD_DIR, then hand the guarded value to the sinks.
+  const root = path.resolve(uploadDir);
+  const full = path.resolve(root, payload.p);
+  if (!full.startsWith(root + path.sep)) {
+    res.status(404).json({ error: 'File not found' });
+    return;
+  }
+  if (!fs.existsSync(full)) {
     res.status(404).json({ error: 'File not found' });
     return;
   }
