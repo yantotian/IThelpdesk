@@ -20,6 +20,17 @@ const STATUS_COLORS: Record<string, string> = {
   on_hold: '#9B7FD6', verified: '#4DB89A', closed: '#666',
 };
 
+// Chart hover tooltip styled from the design system (light palette), matching
+// DashboardPage. NOTE: no explicit color here previously meant the label
+// inherited near-black --foreground on a near-black background = invisible.
+const TOOLTIP_STYLE: React.CSSProperties = {
+  background: 'hsl(var(--chart-tooltip-bg))',
+  border: '1px solid hsl(var(--chart-tooltip-border))',
+  color: 'hsl(var(--foreground))',
+  fontSize: 10,
+  fontFamily: 'monospace',
+};
+
 export default function ReportsPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,7 +161,7 @@ export default function ReportsPage() {
             ['CLOSED', byStatus['closed'] || 0, ''],
             ['ID REQUESTS', idRequestCount, ''],
           ].map(([label, value, cls]) => (
-            <div key={label as string} className="border border-border bg-card p-4">
+            <div key={label as string} className="border border-border bg-card p-4 transition-all duration-200 hover:border-primary/50 hover:shadow-[var(--shadow-hover)]">
               <div className="mono text-[10px] text-muted-foreground mb-2">{label as string}</div>
               <div className={`mono text-2xl font-bold text-foreground ${cls as string}`}>{value as string | number}</div>
             </div>
@@ -159,14 +170,14 @@ export default function ReportsPage() {
 
         <div className="grid md:grid-cols-2 gap-4">
           {/* By Status */}
-          <div className="border border-border bg-card p-5">
+          <div className="border border-border bg-card p-5 transition-all duration-200 hover:border-primary/50 hover:shadow-[var(--shadow-hover)]">
             <div className="mono text-[10px] text-muted-foreground tracking-widest mb-4">TICKETS BY STATUS</div>
             <div className="w-full min-w-0 overflow-hidden" style={{ height: 200 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={statusData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                   <XAxis dataKey="name" tick={{ fontSize: 8, fill: '#888', fontFamily: 'monospace' }} />
                   <YAxis tick={{ fontSize: 9, fill: '#888', fontFamily: 'monospace' }} />
-                  <Tooltip contentStyle={{ background: '#0A0A0A', border: '1px solid #333', fontSize: 10, fontFamily: 'monospace' }} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} />
                   <Bar dataKey="count">{statusData.map((e, i) => <Cell key={i} fill={e.color} />)}</Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -174,7 +185,7 @@ export default function ReportsPage() {
           </div>
 
           {/* By Priority */}
-          <div className="border border-border bg-card p-5">
+          <div className="border border-border bg-card p-5 transition-all duration-200 hover:border-primary/50 hover:shadow-[var(--shadow-hover)]">
             <div className="mono text-[10px] text-muted-foreground tracking-widest mb-4">TICKETS BY PRIORITY</div>
             <div className="w-full min-w-0 overflow-hidden" style={{ height: 200 }}>
               <ResponsiveContainer width="100%" height="100%">
@@ -182,21 +193,21 @@ export default function ReportsPage() {
                   <Pie data={priorityData} dataKey="count" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
                     {priorityData.map((e, i) => <Cell key={i} fill={e.color} />)}
                   </Pie>
-                  <Tooltip contentStyle={{ background: '#0A0A0A', border: '1px solid #333', fontSize: 10, fontFamily: 'monospace' }} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
           </div>
 
           {/* By Category */}
-          <div className="border border-border bg-card p-5">
+          <div className="border border-border bg-card p-5 transition-all duration-200 hover:border-primary/50 hover:shadow-[var(--shadow-hover)]">
             <div className="mono text-[10px] text-muted-foreground tracking-widest mb-4">TOP CATEGORIES</div>
             <div className="w-full min-w-0 overflow-hidden" style={{ height: 200 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={categoryData} layout="vertical" margin={{ top: 0, right: 20, left: 60, bottom: 0 }}>
                   <XAxis type="number" tick={{ fontSize: 9, fill: '#888', fontFamily: 'monospace' }} />
                   <YAxis type="category" dataKey="name" tick={{ fontSize: 8, fill: '#888', fontFamily: 'monospace' }} width={60} />
-                  <Tooltip contentStyle={{ background: '#0A0A0A', border: '1px solid #333', fontSize: 10, fontFamily: 'monospace' }} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} />
                   <Bar dataKey="count" fill="#FF4500" />
                 </BarChart>
               </ResponsiveContainer>
@@ -204,14 +215,14 @@ export default function ReportsPage() {
           </div>
 
           {/* By Technician */}
-          <div className="border border-border bg-card p-5">
+          <div className="border border-border bg-card p-5 transition-all duration-200 hover:border-primary/50 hover:shadow-[var(--shadow-hover)]">
             <div className="mono text-[10px] text-muted-foreground tracking-widest mb-4">TICKETS BY TECHNICIAN</div>
             <div className="w-full min-w-0 overflow-hidden" style={{ height: 200 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={techData} layout="vertical" margin={{ top: 0, right: 20, left: 70, bottom: 0 }}>
                   <XAxis type="number" tick={{ fontSize: 9, fill: '#888', fontFamily: 'monospace' }} />
                   <YAxis type="category" dataKey="name" tick={{ fontSize: 8, fill: '#888', fontFamily: 'monospace' }} width={70} />
-                  <Tooltip contentStyle={{ background: '#0A0A0A', border: '1px solid #333', fontSize: 10, fontFamily: 'monospace' }} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} />
                   <Bar dataKey="count" fill="#4A90D9" />
                 </BarChart>
               </ResponsiveContainer>
