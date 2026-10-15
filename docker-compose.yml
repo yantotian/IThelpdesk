@@ -32,8 +32,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     ports:
       - "${APP_PORT:-8880}:80"
     environment:
@@ -49,52 +47,38 @@ services:
     volumes:
       - uploads:/app/uploads
 
-  # Development service: source-mounted for hot-reloading, uses tsx watch
+  # Development service: source-mounted for hot-reloading. Uses the `api` build
+  # stage so both Vite and tsx dependencies are available in one container.
   dev:
     build:
       context: .
       dockerfile: Dockerfile
+      target: api
     container_name: ciodesk-dev
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     ports:
-      - "3000:80"       # React dev server
-      - "3001:3001"  # API with hot-reload
+      - "5173:5173"    # Vite dev server
+      - "3001:3001"    # API with hot-reload
     environment:
       NODE_ENV: development
       PORT: 3001
+      APP_PORT: 3001
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-helpdesk}
-      DATABASE_WAIT_HOST: db
-      DATABASE_WAIT_PORT: 5432
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env before starting}
       UPLOAD_DIR: /app/uploads
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
     volumes:
-      # Mount source without hiding the runtime image and entrypoint.
-      - ./src:/app/src:cached
+      - .:/app:cached
+      - /app/node_modules
+      - /app/server/node_modules
       - uploads:/app/uploads
-    entrypoint: ["/app/entrypoint.sh"]
-    command: ["dev"]
-
-  # Redis for caching and background job queue
-  redis:
-    image: redis@sha256:4fa24486b8bcca8eec45ee0eb166edc674795e53a2b53d1a9ef263eecebaac85
-    entrypoint: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-redispassword}"]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redispassword}", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 12
-    ports:
-      - "127.0.0.1:6379:6379"
-    volumes:
-      - redis_data:/data
+    working_dir: /app
+    entrypoint: []
+    command: ["sh", "-c", "npm run dev -- --host 0.0.0.0 & (cd server && npm run dev) & wait"]
 
   # Mailhog for email testing and preview
   mailhog:
@@ -118,7 +102,7 @@ services:
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
       PGADMIN_CONFIG_SERVER_MODE: "False"
     ports:
-      - "8081:80"
+      - "127.0.0.1:8081:80"
     depends_on:
       db:
         condition: service_healthy
@@ -133,18 +117,5 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
   pgadmin_data:
   uploads:
-
-
-
-
-
-
-
-
-
-
-
-

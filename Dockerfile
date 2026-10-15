@@ -33,7 +33,7 @@ FROM web AS api
 WORKDIR /app/server
 
 COPY server/package.json server/package-lock.json* ./
-RUN npm install
+RUN npm ci --no-audit --no-fund
 
 COPY server/tsconfig.json ./
 COPY server/src ./src

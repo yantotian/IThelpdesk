@@ -91,6 +91,7 @@ creates the first administrator automatically on first boot.
 | Task | Command |
 | --- | --- |
 | Start | `docker compose up -d` |
+| Start with hot-reload dev server | `docker compose up -d dev` |
 | Stop (keeps data) | `docker compose stop` |
 | Restart | `docker compose restart` |
 | View logs | `docker compose logs -f app` |
@@ -98,11 +99,19 @@ creates the first administrator automatically on first boot.
 | Stop and delete containers | `docker compose down` |
 | **Delete containers AND all data** | `docker compose down -v` |
 
+### Development with hot reload
+
+`docker compose up -d dev` starts the API (with `tsx watch`) and the Vite dev
+server together inside one container. Open **http://localhost:5173** — edits to
+`src/` and `server/src/` are picked up automatically. The API is also reachable
+on `http://localhost:3001`.
+
 ### Deploying to a server
 
 The same `docker compose` file is all you need on any Linux server with Docker
 installed.
 
+```bash
 docker compose up -d
 ```
 
@@ -280,7 +289,7 @@ cd server && npx tsc --noEmit       # API
 │   └── types/               # shared TypeScript types
 ├── reference/               # scratch space for form/mockup references (not shipped)
 ├── Dockerfile               # 3-stage build: SPA -> API -> runtime
-└── docker-compose.yml       # app + postgres
+└── docker-compose.yml       # app + postgres (+ dev, mailhog, pgadmin)
 ```
 
 ---

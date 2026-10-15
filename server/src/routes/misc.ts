@@ -180,7 +180,7 @@ router.get('/search', async (req, res) => {
 
 // ── Audit Log ────────────────────────────────────────────────────────────────
 
-router.get('/audit-log', requireRole('it_admin', 'sysadmin'), async (_req, res) => {
+router.get('/audit-log', requireRole('sysadmin'), async (_req, res) => {
   try {
     const logs = await sql`
       SELECT al.*,
