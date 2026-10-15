@@ -26,6 +26,31 @@ const ALLOWED_TYPES = new Set([
   'text/plain', 'text/csv',
 ]);
 
+const relOf = (abs: string) =>
+  path.relative(uploadDir, abs).split(path.sep).join('/');
+
+/** True when `abs` resolves to a location inside the upload root. */
+const withinUploadDir = (abs: string) => {
+  const root = path.resolve(uploadDir);
+  const resolved = path.resolve(abs);
+  return resolved === root || resolved.startsWith(root + path.sep);
+};
+
+/** Unlink only files that provably live inside the upload root. */
+const safeUnlink = (abs: string) => {
+  if (!withinUploadDir(abs)) return;
+  try {
+    fs.unlinkSync(abs);
+  } catch {
+    /* already gone — nothing to clean up */
+  }
+};
+
+// Ticket ids are uuids (see schema.sql); rejecting anything else keeps them
+// safe to use as a path segment.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * multer resolves `destination` while the multipart stream is still being
  * read, so req.body is not yet populated when `file` precedes `ticketId` in
@@ -36,7 +61,15 @@ const ALLOWED_TYPES = new Set([
 const storage = multer.diskStorage({
   destination: (req, _file, cb) => {
     const bucket = (req.params as Record<string, string>).bucket as Bucket;
-    const dir = path.join(uploadDir, bucket);
+    // Re-validate here (not just in route middleware) and verify containment,
+    // so req.file.path can never point outside the upload root.
+    const dir = BUCKETS.includes(bucket)
+      ? path.resolve(uploadDir, bucket)
+      : null;
+    if (!dir || !withinUploadDir(dir)) {
+      cb(new Error('Unknown bucket'), '');
+      return;
+    }
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
@@ -55,9 +88,6 @@ const upload = multer({
     else cb(new Error(`File type not allowed: ${file.mimetype}`));
   },
 });
-
-const relOf = (abs: string) =>
-  path.relative(uploadDir, abs).split(path.sep).join('/');
 
 /** POST /api/upload/:bucket  — generic upload (id photos, signatures) */
 router.post(
@@ -83,8 +113,8 @@ router.post(
 
       if (req.params.bucket === 'ticket-attachments') {
         const { ticketId } = req.body;
-        if (!ticketId) {
-          fs.unlinkSync(req.file.path);
+        if (!ticketId || typeof ticketId !== 'string' || !UUID_RE.test(ticketId)) {
+          safeUnlink(req.file.path);
           res.status(400).json({ error: 'ticketId is required' });
           return;
         }
@@ -96,7 +126,7 @@ router.post(
           [ticketId, req.user!.id],
         );
         if (allowed.length === 0) {
-          fs.unlinkSync(req.file.path);
+          safeUnlink(req.file.path);
           res.status(403).json({ error: 'Access denied' });
           return;
         }
@@ -125,7 +155,7 @@ router.post(
 
       res.json({ path: rel });
     } catch (error) {
-      if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      if (req.file) safeUnlink(req.file.path);
       console.error('Upload error:', error);
       res.status(500).json({ error: 'Upload failed' });
     }
