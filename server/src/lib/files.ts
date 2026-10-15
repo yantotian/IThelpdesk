@@ -11,8 +11,18 @@ export interface FileTokenPayload {
   e: number;
 }
 
+// Strip base64 '=' padding without a regex: /=+$/ is quadratic on inputs such
+// as a long run of '=' followed by a non-'=' character, so it is flagged as
+// polynomial ReDoS on tainted input. Padding is at most two characters, and a
+// char loop is linear and exact for any input.
+const stripPadding = (s: string) => {
+  let end = s.length;
+  while (end > 0 && s.charCodeAt(end - 1) === 0x3d) end--; // 0x3d = '='
+  return end === s.length ? s : s.slice(0, end);
+};
+
 const b64url = (buf: Buffer | string) =>
-  Buffer.from(buf as never).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  stripPadding(Buffer.from(buf as never).toString('base64').replace(/\+/g, '-').replace(/\//g, '_'));
 
 const unb64url = (s: string) =>
   Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
