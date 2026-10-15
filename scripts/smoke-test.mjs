@@ -7,6 +7,8 @@
  * Exercises: auth, RBAC, tickets, auto-assign, SLA, notifications,
  * signed file URLs, and confirms protected data is NOT publicly readable.
  */
+import { randomUUID } from 'node:crypto';
+
 const BASE = (process.argv[2] || 'http://localhost:8080').replace(/\/$/, '');
 
 let pass = 0;
@@ -40,7 +42,7 @@ async function req(path, { method = 'GET', token, body, raw } = {}) {
   return { status: res.status, data };
 }
 
-const uniq = () => Math.random().toString(36).slice(2, 10);
+const uniq = () => randomUUID();
 
 console.log(`\nSmoke test against ${BASE}\n`);
 
