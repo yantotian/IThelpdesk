@@ -141,11 +141,36 @@ router.post(
         }
 
         // Now that the body is parsed, move the file under its ticket folder.
-        const finalDir = path.join(uploadDir, 'ticket-attachments', ticketId);
+        // Normalize and contain BOTH endpoints of the rename: each value
+        // passed to fs.renameSync must itself be the guarded value — the
+        // staged source has to resolve inside the upload root, and the
+        // destination (built from the uuid-validated ticket id) has to stay
+        // inside it as well.
+        const root = fs.realpathSync(path.resolve(uploadDir));
+
+        const staged = fs.realpathSync(req.file.path);
+        if (!staged.startsWith(root + path.sep)) {
+          console.error('Refusing to move an upload outside the upload root:', staged);
+          res.status(500).json({ error: 'Invalid upload path' });
+          return;
+        }
+
+        const finalDir = path.join(root, 'ticket-attachments', ticketId);
+        if (!finalDir.startsWith(root + path.sep)) {
+          safeUnlink(staged);
+          res.status(400).json({ error: 'Invalid destination path' });
+          return;
+        }
         fs.mkdirSync(finalDir, { recursive: true });
-        const finalPath = path.join(finalDir, path.basename(req.file.path));
-        fs.renameSync(req.file.path, finalPath);
-        const finalRel = relOf(finalPath);
+
+        const finalPath = path.join(finalDir, path.basename(staged));
+        if (!finalPath.startsWith(root + path.sep)) {
+          safeUnlink(staged);
+          res.status(400).json({ error: 'Invalid destination path' });
+          return;
+        }
+        fs.renameSync(staged, finalPath);
+        const finalRel = path.relative(root, finalPath).split(path.sep).join('/');
 
         const [row] = await sql`
           INSERT INTO ticket_attachments (ticket_id, uploader_id, file_name, file_path, file_size, mime_type)
