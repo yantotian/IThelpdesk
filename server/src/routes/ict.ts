@@ -232,7 +232,9 @@ router.post('/devices/import', async (req: AuthRequest, res) => {
     const errors: { row: number; message: string }[] = [];
     let created = 0;
 
-    for (let i = 0; i < rows.length; i++) {
+    // Clamp the loop bound so it can never exceed MAX_IMPORT_ROWS even if the
+    // length guard above is bypassed or refactored away.
+    for (let i = 0; i < Math.min(rows.length, MAX_IMPORT_ROWS); i++) {
       const { data, error } = buildDevice((rows[i] ?? {}) as Row, opts);
       if (!data || error) {
         errors.push({ row: i + 1, message: error || 'Invalid row' });
@@ -495,7 +497,9 @@ router.post('/internet/import', async (req: AuthRequest, res) => {
     const errors: { row: number; message: string }[] = [];
     let created = 0;
 
-    for (let i = 0; i < rows.length; i++) {
+    // Clamp the loop bound so it can never exceed MAX_IMPORT_ROWS even if the
+    // length guard above is bypassed or refactored away.
+    for (let i = 0; i < Math.min(rows.length, MAX_IMPORT_ROWS); i++) {
       const { data, error } = buildInternet((rows[i] ?? {}) as Row, routers);
       if (!data || error) {
         errors.push({ row: i + 1, message: error || 'Invalid row' });
