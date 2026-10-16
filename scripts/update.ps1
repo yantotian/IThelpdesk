@@ -130,7 +130,11 @@ try {
         ($ancestors -notcontains [int]$_.ProcessId)
     })
     foreach ($proc in $devProcs) {
-        & taskkill /PID $proc.ProcessId /T /F
+        # A child may already be gone (reaped by an earlier /T tree kill);
+        # suppress taskkill's 'not found' stderr without letting it throw.
+        $ErrorActionPreference = 'Continue'
+        & taskkill /PID $proc.ProcessId /T /F 2>$null | Out-Null
+        $ErrorActionPreference = 'Stop'
     }
     if ($devProcs.Count -gt 0) {
         Write-Host "Stopped $($devProcs.Count) dev process tree(s)." -ForegroundColor Yellow
