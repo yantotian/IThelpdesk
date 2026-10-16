@@ -182,7 +182,12 @@ try {
         $prodCmd = "& { `$env:NODE_ENV = 'production'; Set-Location -LiteralPath '" + $root + "'; npm run server:start }"
         Start-Process powershell -ArgumentList '-NoProfile', '-Command', $prodCmd -WorkingDirectory $root
     } else {
-        Start-Process powershell -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'dev.ps1') -WorkingDirectory $root
+        # Windows PowerShell 5.1 joins -ArgumentList elements with spaces and
+        # does NOT quote them, so a script path containing spaces (this repo
+        # lives under 'github proj') would be split into garbage arguments and
+        # the new window would exit instantly. Pass one pre-quoted string.
+        $devScript = Join-Path $PSScriptRoot 'dev.ps1'
+        Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$devScript`"" -WorkingDirectory $root
     }
 
     # -- 9. Health + smoke test
