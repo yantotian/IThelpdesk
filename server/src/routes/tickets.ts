@@ -146,7 +146,16 @@ router.get('/number/:ticketNumber', async (req: AuthRequest, res) => {
       res.status(404).json({ error: 'Ticket not found' });
       return;
     }
-    res.json(tickets[0]);
+
+    // Same access rule as GET /:id — ticket numbers must not let a requester
+    // read other people's tickets.
+    const ticket = tickets[0];
+    if (req.user!.role === 'requester' && ticket.requester_id !== req.user!.id) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    res.json(ticket);
   } catch (error) {
     console.error('Get ticket by number error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -240,9 +249,31 @@ router.put('/:id/status', async (req: AuthRequest, res) => {
     const { id } = req.params;
     const { status, note } = req.body;
 
+    // Validate against the ticket_status enum before touching the database —
+    // an unknown value would otherwise surface as a 500 from the cast.
+    const ALLOWED_STATUSES = ['new', 'assigned', 'in_progress', 'resolved', 'on_hold', 'verified', 'closed'];
+    if (!ALLOWED_STATUSES.includes(status)) {
+      res.status(400).json({ error: `Invalid status: must be one of ${ALLOWED_STATUSES.join(', ')}` });
+      return;
+    }
+
     const existing = await sql`SELECT status, requester_id, assigned_to FROM tickets WHERE id = ${id} LIMIT 1`;
     if (existing.length === 0) {
       res.status(404).json({ error: 'Ticket not found' });
+      return;
+    }
+
+    // Mirror the UI rules (TicketDetailPage status buttons, KanbanPage drag):
+    // admins may move any ticket, technicians only tickets they requested or
+    // are assigned, requesters only their own tickets.
+    const { role, id: userId } = req.user!;
+    const isOwnOrAssigned = existing[0].requester_id === userId || existing[0].assigned_to === userId;
+    const allowed =
+      role === 'it_admin' || role === 'sysadmin' ||
+      (role === 'technician' && isOwnOrAssigned) ||
+      (role === 'requester' && existing[0].requester_id === userId);
+    if (!allowed) {
+      res.status(403).json({ error: 'Access denied' });
       return;
     }
 
@@ -267,11 +298,35 @@ router.put('/:id/status', async (req: AuthRequest, res) => {
   }
 });
 
-// Assign ticket
-router.put('/:id/assign', async (req: AuthRequest, res) => {
+// Assign ticket — admin-only, matching bulk-assign below and the UI's canAssign
+// rule. The role check runs before the ticket lookup so a non-admin is always
+// answered 403 without probing which ticket ids exist.
+router.put('/:id/assign', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const { techId } = req.body;
+
+    const isUuid = typeof techId === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(techId);
+    if (!isUuid) {
+      res.status(400).json({ error: 'techId must be a valid UUID' });
+      return;
+    }
+
+    const techs = await sql`
+      SELECT id FROM users
+      WHERE id = ${techId} AND role IN ('technician', 'it_admin', 'sysadmin') AND is_active = true
+    `;
+    if (techs.length === 0) {
+      res.status(400).json({ error: 'techId must reference an active technician or admin' });
+      return;
+    }
+
+    const existing = await sql`SELECT id FROM tickets WHERE id = ${id} LIMIT 1`;
+    if (existing.length === 0) {
+      res.status(404).json({ error: 'Ticket not found' });
+      return;
+    }
 
     await sql`UPDATE tickets SET assigned_to = ${techId}, status = 'assigned' WHERE id = ${id}`;
     await sql`

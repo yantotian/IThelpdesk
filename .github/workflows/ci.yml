@@ -115,6 +115,20 @@ jobs:
             -H "Authorization: Bearer $requester_token" \
             http://localhost:8880/api/profiles)" = "403"
 
+          # Write guards must reject a requester server-side (role checks run
+          # before any body/lookup work, so these need no real ticket/device).
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            -H "Authorization: Bearer $requester_token" \
+            -H 'Content-Type: application/json' \
+            -X POST -d '{}' \
+            http://localhost:8880/api/ict/devices)" = "403"
+
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            -H "Authorization: Bearer $requester_token" \
+            -H 'Content-Type: application/json' \
+            -X PUT -d '{"techId":"00000000-0000-0000-0000-000000000000"}' \
+            http://localhost:8880/api/tickets/00000000-0000-0000-0000-000000000000/assign)" = "403"
+
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
             -H 'Authorization: Bearer invalid-ci-token' \
             http://localhost:8880/api/auth/me)" = "401"

@@ -22,6 +22,7 @@ const ICTDashboardPage = lazy(() => import('@/pages/admin/ICTDashboardPage'));
 const VenueBookingPage = lazy(() => import('@/pages/VenueBookingPage'));
 const VenuesPage = lazy(() => import('@/pages/admin/VenuesPage'));
 const VenueBookingsReviewPage = lazy(() => import('@/pages/admin/VenueBookingsReviewPage'));
+const NotFound = lazy(() => import('@/pages/NotFound'));
 
 export interface RouteConfig {
   name: string;
@@ -53,4 +54,7 @@ export const routes: RouteConfig[] = [
   { name: 'Venue Booking',          path: '/venues',                    element: <VenueBookingPage /> },
   { name: 'Venues',                 path: '/admin/venues',              element: <VenuesPage /> },
   { name: 'Booking Approvals',      path: '/admin/venue-bookings',      element: <VenueBookingsReviewPage /> },
+  // Catch-all. Deliberately NOT marked public: RouteGuard's wildcard matcher
+  // would treat `*` as matching every path and silently disable the guard.
+  { name: 'Not Found',              path: '*',                          element: <NotFound /> },
 ];

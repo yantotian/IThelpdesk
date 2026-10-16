@@ -134,7 +134,7 @@ export default function TicketDetailPage() {
         updates.resolved_at = new Date().toISOString();
       }
       if (Object.keys(updates).length > 0) await updateTicket(ticket.id, updates);
-      await updateTicketStatus(ticket.id, newStatus, profile.id, ticket.status);
+      await updateTicketStatus(ticket.id, newStatus);
       setNewStatus('');
       setResolution('');
       setShowResolution(false);
@@ -148,7 +148,7 @@ export default function TicketDetailPage() {
     if (!assignTo || !ticket || !profile) return;
     setSaving(true);
     try {
-      await assignTicket(ticket.id, assignTo, profile.id);
+      await assignTicket(ticket.id, assignTo);
       setAssignTo('');
       await reload();
       toast.success('Ticket reassigned');

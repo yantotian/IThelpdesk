@@ -19,25 +19,11 @@ import {
   createVenueBooking,
   cancelVenueBooking,
 } from '@/lib/api';
-import type { Venue, VenueBooking, VenueBookingStatus } from '@/types/types';
+import type { Venue, VenueBooking } from '@/types/types';
 import VenueCalendar, { toDateKey } from '@/components/venue/VenueCalendar';
+import { VenueBookingStatusBadge as StatusBadge } from '@/components/common/Badges';
 import { formatDateRange } from '@/lib/utils';
 import { Plus, RefreshCw, MapPin, Users, CalendarDays, X } from 'lucide-react';
-
-// ── Status badge ──────────────────────────────────────────────────────────────
-function StatusBadge({ status }: { status: VenueBookingStatus }) {
-  const map: Record<VenueBookingStatus, string> = {
-    pending: 'border-yellow-500 text-yellow-600',
-    approved: 'border-green-500 text-green-600',
-    rejected: 'border-red-500 text-red-600',
-    cancelled: 'border-border text-muted-foreground',
-  };
-  return (
-    <span className={`mono text-[10px] border px-1.5 py-0.5 ${map[status]}`}>
-      {status.toUpperCase()}
-    </span>
-  );
-}
 
 function timeLabel(b: VenueBooking): string {
   if (b.is_all_day) return 'All day';

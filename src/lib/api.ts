@@ -331,17 +331,14 @@ export async function updateTicket(id: string, updates: Partial<Ticket>) {
   return api.put(`/tickets/${id}`, updates);
 }
 
-export async function updateTicketStatus(
-  ticketId: string,
-  newStatus: TicketStatus,
-  actorId: string,
-  oldStatus: TicketStatus,
-  note?: string
-) {
-  return api.put(`/tickets/${ticketId}/status`, { status: newStatus, note });
+// The server derives the actor from the JWT, reads the previous status from
+// the ticket row itself, and falls back to a generated activity note — none of
+// which needs to travel from the client.
+export async function updateTicketStatus(ticketId: string, newStatus: TicketStatus) {
+  return api.put(`/tickets/${ticketId}/status`, { status: newStatus });
 }
 
-export async function assignTicket(ticketId: string, techId: string, actorId: string) {
+export async function assignTicket(ticketId: string, techId: string) {
   return api.put(`/tickets/${ticketId}/assign`, { techId });
 }
 

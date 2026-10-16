@@ -111,17 +111,34 @@ router.get('/technician-workload', async (_req, res) => {
 
 // ── Recent Activity ──────────────────────────────────────────────────────────
 
-router.get('/recent-activity', async (req, res) => {
+router.get('/recent-activity', async (req: AuthRequest, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+
+    // Scope the feed the same way GET /api/tickets is scoped: requesters only
+    // see activity on their own tickets, technicians on tickets they requested
+    // or are assigned, admins see everything.
+    const { role, id } = req.user!;
+    let scope = '';
+    const params: any[] = [limit];
+    if (role === 'requester') {
+      scope = 'WHERE t.requester_id = $2';
+      params.push(id);
+    } else if (role === 'technician') {
+      scope = 'WHERE (t.assigned_to = $2 OR t.requester_id = $2)';
+      params.push(id);
+    }
+
     const activities = await sql.unsafe(
       `SELECT ta.*,
         json_build_object('username', u.username, 'full_name', u.full_name) as actor
       FROM ticket_activities ta
       LEFT JOIN users u ON ta.actor_id = u.id
+      JOIN tickets t ON t.id = ta.ticket_id
+      ${scope}
       ORDER BY ta.created_at DESC
       LIMIT $1`,
-      [limit],
+      params,
     );
     res.json(activities);
   } catch (error) {
@@ -132,7 +149,7 @@ router.get('/recent-activity', async (req, res) => {
 
 // ── Global Search ────────────────────────────────────────────────────────────
 
-router.get('/search', async (req, res) => {
+router.get('/search', async (req: AuthRequest, res) => {
   try {
     const q = req.query.q as string;
     if (!q || q.trim().length < 2) {
@@ -140,24 +157,44 @@ router.get('/search', async (req, res) => {
       return;
     }
     const term = q.trim();
+    const like = `%${term}%`;
 
-    const [tickets, users, categories] = await Promise.all([
+    // Same role scoping as GET /api/tickets: a requester or technician must
+    // not discover other people's tickets through global search.
+    const { role, id } = req.user!;
+    let ticketScope = '';
+    const ticketParams: any[] = [like];
+    if (role === 'requester') {
+      ticketScope = 'AND requester_id = $2';
+      ticketParams.push(id);
+    } else if (role === 'technician') {
+      ticketScope = 'AND (assigned_to = $2 OR requester_id = $2)';
+      ticketParams.push(id);
+    }
+
+    // User results link to /admin/users, which only admins may open — the user
+    // directory stays out of everyone else's results.
+    const canSeeUsers = role === 'it_admin' || role === 'sysadmin';
+
+    const [tickets, categories] = await Promise.all([
       sql.unsafe(`
         SELECT id, ticket_number, subject, status, priority FROM tickets
-        WHERE ticket_number ILIKE $1 OR subject ILIKE $1
+        WHERE (ticket_number ILIKE $1 OR subject ILIKE $1) ${ticketScope}
         LIMIT 8
-      `, [`%${term}%`]),
-      sql.unsafe(`
-        SELECT id, username, full_name, role FROM users
-        WHERE username ILIKE $1 OR full_name ILIKE $1
-        LIMIT 5
-      `, [`%${term}%`]),
+      `, ticketParams),
       sql.unsafe(`
         SELECT id, name, parent_id FROM categories
         WHERE name ILIKE $1 AND is_active = true
         LIMIT 5
-      `, [`%${term}%`]),
+      `, [like]),
     ]);
+    const users = canSeeUsers
+      ? await sql.unsafe(`
+          SELECT id, username, full_name, role FROM users
+          WHERE username ILIKE $1 OR full_name ILIKE $1
+          LIMIT 5
+        `, [like])
+      : [];
 
     const results: Array<{ type: string; id: string; label: string; sub: string; path: string }> = [];
 

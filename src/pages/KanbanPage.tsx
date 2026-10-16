@@ -101,7 +101,7 @@ export default function KanbanPage() {
       setDragging(null); setDragOver(null); return;
     }
     try {
-      await updateTicketStatus(ticket.id, newStatus, profile.id, ticket.status);
+      await updateTicketStatus(ticket.id, newStatus);
       toast.success(`Moved to ${newStatus.replace('_', ' ')}`);
       await fetchAll();
     } catch (e: any) { toast.error(e.message); }

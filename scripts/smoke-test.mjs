@@ -159,6 +159,24 @@ const reqLogin = await req('/api/auth/login', {
 const reqToken = reqLogin.data?.token;
 check('new requester can log in', reqLogin.status === 200 && !!reqToken);
 
+// A second requester with no tickets of their own, used below to prove that
+// cross-user ticket access is refused server-side. Matches the purgeSmokeData
+// prefix (smokereq_) so leftover runs stay repeatable.
+const foreignName = `smokereq_${uniq()}`;
+const foreignReg = await req('/api/profiles', {
+  method: 'POST',
+  token: adminToken,
+  body: { username: foreignName, password: PASSWORD, full_name: 'Smoke Other Requester', role: 'requester' },
+});
+check('admin can create a second requester', foreignReg.status === 201, `status ${foreignReg.status}`);
+
+const foreignLogin = await req('/api/auth/login', {
+  method: 'POST',
+  body: { username: foreignName, password: PASSWORD },
+});
+check('second requester can log in', foreignLogin.status === 200 && !!foreignLogin.data?.token);
+const foreignToken = foreignLogin.data?.token;
+
 // A technician must not be able to mint users, and must not be able to mint a sysadmin.
 const techCreate = await req('/api/profiles', {
   method: 'POST',
@@ -258,6 +276,90 @@ const techRoleChange = await req(`/api/profiles/${requester.data?.id}/role`, {
   body: { role: 'it_admin' },
 });
 check('technician cannot change roles', techRoleChange.status === 403, `status ${techRoleChange.status}`);
+
+// ── ticket write authorization (server-side, not just hidden in the UI) ──────
+console.log('\nticket write authorization');
+const foreignStatus = await req(`/api/tickets/${ticket.id}/status`, {
+  method: 'PUT',
+  token: foreignToken,
+  body: { status: 'in_progress' },
+});
+check('another requester cannot change a ticket status', foreignStatus.status === 403, `status ${foreignStatus.status}`);
+
+const foreignByNumber = await req(`/api/tickets/number/${ticket.ticket_number}`, { token: foreignToken });
+check('another requester cannot read a ticket by number', foreignByNumber.status === 403, `status ${foreignByNumber.status}`);
+
+const requesterAssign = await req(`/api/tickets/${ticket.id}/assign`, {
+  method: 'PUT',
+  token: reqToken,
+  body: { techId: tech.data?.id },
+});
+check('requester cannot assign tickets', requesterAssign.status === 403, `status ${requesterAssign.status}`);
+
+const techAssign = await req(`/api/tickets/${ticket.id}/assign`, {
+  method: 'PUT',
+  token: techToken,
+  body: { techId: tech.data?.id },
+});
+check('technician cannot assign tickets', techAssign.status === 403, `status ${techAssign.status}`);
+
+const badAssignee = await req(`/api/tickets/${ticket.id}/assign`, {
+  method: 'PUT',
+  token: adminToken,
+  body: { techId: 'not-a-uuid' },
+});
+check('assign rejects an invalid assignee', badAssignee.status === 400, `status ${badAssignee.status}`);
+
+const bogusStatus = await req(`/api/tickets/${randomUUID()}/status`, {
+  method: 'PUT',
+  token: adminToken,
+  body: { status: 'definitely_not_a_status' },
+});
+check('invalid status value is rejected with 400', bogusStatus.status === 400, `status ${bogusStatus.status}`);
+
+const adminAssign = await req(`/api/tickets/${ticket.id}/assign`, {
+  method: 'PUT',
+  token: adminToken,
+  body: { techId: tech.data?.id },
+});
+check('admin can still assign tickets', adminAssign.status === 200, `status ${adminAssign.status}`);
+
+const ownStatus = await req(`/api/tickets/${ticket.id}/status`, {
+  method: 'PUT',
+  token: reqToken,
+  body: { status: 'in_progress', note: 'requester reopen' },
+});
+check('requester can still change own ticket status (UI flow)', ownStatus.status === 200, `status ${ownStatus.status}`);
+
+const ictCreate = await req('/api/ict/devices', {
+  method: 'POST',
+  token: reqToken,
+  body: { name: 'Smoke Unauthorized Device' },
+});
+check('requester cannot create ICT inventory entries', ictCreate.status === 403, `status ${ictCreate.status}`);
+
+// ── data scoping (recent activity feed + global search) ─────────────────────
+console.log('\ndata scoping');
+const scopedFeed = await req('/api/recent-activity?limit=50', { token: reqToken });
+check(
+  'recent-activity feed is scoped to the requester',
+  Array.isArray(scopedFeed.data) && scopedFeed.data.length > 0 &&
+    scopedFeed.data.every((a) => a.ticket_id === ticket.id),
+  `rows ${scopedFeed.data?.length ?? 0}`,
+);
+
+const searchUsers = await req(`/api/search?q=${techName}`, { token: reqToken });
+check(
+  'requester search does not expose the user directory',
+  !searchUsers.data?.some((r) => r.type === 'user'),
+  JSON.stringify(searchUsers.data?.map((r) => r.type)),
+);
+
+const searchAdmin = await req(`/api/search?q=${techName}`, { token: adminToken });
+check('admin search still finds users', !!searchAdmin.data?.some((r) => r.type === 'user'));
+
+const searchOwn = await req(`/api/search?q=${ticket.ticket_number}`, { token: reqToken });
+check('requester search still finds own ticket', !!searchOwn.data?.some((r) => r.type === 'ticket'));
 
 // ── profile self-service ─────────────────────────────────────────────────────
 console.log('\nprofile & password');
@@ -380,7 +482,7 @@ check(
 const delTicket = await req(`/api/tickets/${ticket.id}`, { method: 'DELETE', token: adminToken });
 check('admin can delete a ticket', delTicket.status === 200, `status ${delTicket.status}`);
 
-for (const id of [requester.data?.id, tech.data?.id]) {
+for (const id of [requester.data?.id, foreignReg.data?.id, tech.data?.id]) {
   if (id) await req(`/api/profiles/${id}`, { method: 'DELETE', token: adminToken });
 }
 const verifyGone = await req(`/api/profiles/${tech.data?.id}`, { token: adminToken });

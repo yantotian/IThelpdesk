@@ -2,20 +2,31 @@
 
 ## Supported Versions
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+There are no versioned release branches yet — security fixes land on `main`
+and ship with the next deployment.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+| Version    | Supported          |
+| ---------- | ------------------ |
+| `main`     | :white_check_mark: |
+| older refs | :x:                |
 
 ## Reporting a Vulnerability
 
-Use this section to tell people how to report a vulnerability.
+Please **do not** open a public issue for anything that could expose user
+data or credentials, or allow privilege escalation.
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+Report it privately instead:
+
+- Use GitHub's **Security → Report a vulnerability** advisory on this
+  repository (preferred), or
+- Contact a repository maintainer directly through their GitHub profile.
+
+Include, where possible:
+
+- The affected endpoint, page, or component
+- Steps to reproduce
+- The observed impact (data exposure, privilege escalation, …)
+
+A maintainer will acknowledge the report, confirm the issue, and ship a fix
+before the details are made public. Reporters are credited in the fix commit
+unless they ask to remain anonymous.

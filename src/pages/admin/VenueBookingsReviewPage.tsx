@@ -20,22 +20,9 @@ import {
 import { toast } from 'sonner';
 import { getVenues, getVenueBookings, reviewVenueBooking } from '@/lib/api';
 import type { Venue, VenueBooking, VenueBookingStatus } from '@/types/types';
+import { VenueBookingStatusBadge as StatusBadge } from '@/components/common/Badges';
 import { formatDateRange } from '@/lib/utils';
 import { RefreshCw, CheckCircle, XCircle, CalendarDays, MapPin } from 'lucide-react';
-
-function StatusBadge({ status }: { status: VenueBookingStatus }) {
-  const map: Record<VenueBookingStatus, string> = {
-    pending: 'border-yellow-500 text-yellow-600',
-    approved: 'border-green-500 text-green-600',
-    rejected: 'border-red-500 text-red-600',
-    cancelled: 'border-border text-muted-foreground',
-  };
-  return (
-    <span className={`mono text-[10px] border px-1.5 py-0.5 ${map[status]}`}>
-      {status.toUpperCase()}
-    </span>
-  );
-}
 
 function timeLabel(b: VenueBooking): string {
   if (b.is_all_day) return 'All day';

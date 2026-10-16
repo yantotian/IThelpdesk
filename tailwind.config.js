@@ -6,11 +6,7 @@ export default {
     darkMode: ['class'],
     content: [
         './index.html',
-        './pages/**/*.{ts,tsx}',
-        './components/**/*.{ts,tsx}',
-        './app/**/*.{ts,tsx}',
-        './src/**/*.{ts,tsx}',
-        './node_modules/streamdown/dist/**/*.js'
+        './src/**/*.{ts,tsx}'
     ],
     safelist: ['border', 'border-border'],
     prefix: '',

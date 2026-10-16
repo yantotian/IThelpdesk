@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from "react";
-import type { ImgHTMLAttributes } from "react";
 import MainLayout from "@/components/layouts/MainLayout";
+import { IDRequestStatusBadge as StatusBadge } from "@/components/common/Badges";
+import { SignedImg } from "@/components/common/SignedImg";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,15 +12,12 @@ import {
   RotateCcw,
   CheckCircle,
   X,
-  Clock,
-  XCircle,
   CreditCard,
   FileText,
 } from "lucide-react";
 import {
   submitIDRequest,
   getMyIDRequests,
-  getSignedStorageUrl,
 } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { ID_TYPES, type IDType, type IDRequest } from "@/types/types";
@@ -53,26 +51,6 @@ const EMPTY_FORM: IDForm = {
 };
 
 const MAX_MEDIA_BYTES = 2 * 1024 * 1024;
-
-const STATUS_STYLES: Record<string, string> = {
-  pending: "border-yellow-500 text-yellow-600",
-  approved: "border-green-500 text-green-600",
-  rejected: "border-red-500 text-red-600",
-};
-const STATUS_ICONS: Record<string, React.ReactNode> = {
-  pending: <Clock className="w-3 h-3" />,
-  approved: <CheckCircle className="w-3 h-3" />,
-  rejected: <XCircle className="w-3 h-3" />,
-};
-function StatusBadge({ status }: { status: string }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1 mono text-[10px] border px-1.5 py-0.5 ${STATUS_STYLES[status] ?? "border-border text-muted-foreground"}`}
-    >
-      {STATUS_ICONS[status]} {status.toUpperCase()}
-    </span>
-  );
-}
 
 // Signature Pad
 function SignaturePad({ onCapture }: { onCapture: (dataUrl: string) => void }) {
@@ -377,27 +355,6 @@ function MediaSection({
   );
 }
 
-function SignedImg({
-  bucket,
-  ref,
-  ...props
-}: { bucket: string; ref: string } & ImgHTMLAttributes<HTMLImageElement>) {
-  const [src, setSrc] = useState("");
-  useEffect(() => {
-    if (!ref) return;
-    let cancelled = false;
-    getSignedStorageUrl(bucket, ref)
-      .then((u) => {
-        if (!cancelled) setSrc(u);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [bucket, ref]);
-  return src ? <img src={src} {...props} /> : null;
-}
-
 // My Requests Tab
 function MyRequestsTab() {
   const [requests, setRequests] = useState<IDRequest[]>([]);
@@ -491,7 +448,7 @@ function MyRequestsTab() {
                     </span>
                     <SignedImg
                       bucket="id-photos"
-                      ref={r.photo_url}
+                      path={r.photo_url}
                       alt="ID Photo"
                       className="h-20 border border-border object-contain bg-muted"
                     />
@@ -504,7 +461,7 @@ function MyRequestsTab() {
                     </span>
                     <SignedImg
                       bucket="id-signatures"
-                      ref={r.signature_url}
+                      path={r.signature_url}
                       alt="Signature"
                       className="h-12 border border-border bg-white p-1 object-contain"
                     />

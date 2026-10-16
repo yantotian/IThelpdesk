@@ -205,7 +205,7 @@ router.get('/devices', async (req, res) => {
 });
 
 // Every role may add — this is what replaced the Submit Inventory page.
-router.post('/devices', async (req: AuthRequest, res) => {
+router.post('/devices', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, res) => {
   try {
     const opts = await loadOptionSets();
     const { data, error } = buildDevice(req.body ?? {}, opts);
@@ -223,7 +223,7 @@ router.post('/devices', async (req: AuthRequest, res) => {
 });
 
 // Bulk create from a CSV produced by the Export CSV button on the same page.
-router.post('/devices/import', async (req: AuthRequest, res) => {
+router.post('/devices/import', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, res) => {
   try {
     const rows = req.body?.rows;
     if (badImportLength(rows, res)) return;
@@ -471,7 +471,7 @@ async function insertInternet(data: InternetInsert, createdBy: string) {
   return rows[0];
 }
 
-router.post('/internet', async (req: AuthRequest, res) => {
+router.post('/internet', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, res) => {
   try {
     const routers = await loadRouterKeys();
     const { data, error } = buildInternet(req.body ?? {}, routers);
@@ -488,7 +488,7 @@ router.post('/internet', async (req: AuthRequest, res) => {
   }
 });
 
-router.post('/internet/import', async (req: AuthRequest, res) => {
+router.post('/internet/import', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, res) => {
   try {
     const rows = req.body?.rows;
     if (badImportLength(rows, res)) return;

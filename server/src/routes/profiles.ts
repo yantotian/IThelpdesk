@@ -90,7 +90,6 @@ router.put('/:id', async (req: AuthRequest, res) => {
     }
 
     const values: unknown[] = Object.values(updates);
-    const setSql = Object.keys(updates).map((_, i) => `$${i + 1}`).join(', ');
     await sql.unsafe(
       `UPDATE users SET ${Object.keys(updates).map((k, i) => `${k} = $${i + 1}`).join(', ')} WHERE id = $${values.length + 1}`,
       [...values, id] as never[],

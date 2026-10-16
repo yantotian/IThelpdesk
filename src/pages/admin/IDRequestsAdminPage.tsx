@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
-import type { ImgHTMLAttributes } from 'react';
 import MainLayout from '@/components/layouts/MainLayout';
+import { IDRequestStatusBadge as StatusBadge } from '@/components/common/Badges';
+import { SignedImg } from '@/components/common/SignedImg';
 import { getIDRequests, updateIDRequestStatus, updateIDRequestPayment, getSignedStorageUrl } from '@/lib/api';
 import type { IDRequest } from '@/types/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { RefreshCw, Eye, CheckCircle, XCircle, Clock, Search, Download, CreditCard, FileDown } from 'lucide-react';
+import { RefreshCw, Eye, CheckCircle, XCircle, Search, Download, CreditCard, FileDown } from 'lucide-react';
 import { formatUtc8Date, formatUtc8DateStamp } from '@/lib/utils';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -18,24 +19,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-
-const STATUS_STYLES: Record<string, string> = {
-  pending:  'border-yellow-500 text-yellow-600',
-  approved: 'border-green-500 text-green-600',
-  rejected: 'border-red-500 text-red-600',
-};
-const STATUS_ICONS: Record<string, React.ReactNode> = {
-  pending:  <Clock className="w-3 h-3" />,
-  approved: <CheckCircle className="w-3 h-3" />,
-  rejected: <XCircle className="w-3 h-3" />,
-};
-function StatusBadge({ status }: { status: string }) {
-  return (
-    <span className={`inline-flex items-center gap-1 mono text-[10px] border px-1.5 py-0.5 ${STATUS_STYLES[status] ?? 'border-border text-muted-foreground'}`}>
-      {STATUS_ICONS[status]} {status.toUpperCase()}
-    </span>
-  );
-}
 
 function exportCSV(rows: IDRequest[]) {
   const headers = ['Submitted', 'Full Name', 'Nickname', 'ID Number', 'ID Type', 'Office', 'Position', 'Address',
@@ -67,17 +50,6 @@ async function downloadImage(bucket: string, path: string, filename: string) {
     a.href = objUrl; a.download = filename; a.click();
     URL.revokeObjectURL(objUrl);
   } catch { toast.error('Download failed'); }
-}
-
-function SignedImg({ bucket, ref, ...props }: { bucket: string; ref: string } & ImgHTMLAttributes<HTMLImageElement>) {
-  const [src, setSrc] = useState('');
-  useEffect(() => {
-    if (!ref) return;
-    let cancelled = false;
-    getSignedStorageUrl(bucket, ref).then(u => { if (!cancelled) setSrc(u); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [bucket, ref]);
-  return src ? <img src={src} {...props} /> : null;
 }
 
 export default function IDRequestsAdminPage() {
@@ -313,7 +285,7 @@ export default function IDRequestsAdminPage() {
                       )}
                     </div>
                     {viewing.photo_url
-                      ? <SignedImg bucket="id-photos" ref={viewing.photo_url} alt="ID Photo" className="h-28 border border-border object-contain bg-muted w-full" />
+                      ? <SignedImg bucket="id-photos" path={viewing.photo_url} alt="ID Photo" className="h-28 border border-border object-contain bg-muted w-full" />
                       : <span className="text-xs text-muted-foreground">Not provided</span>}
                   </div>
                   <div>
@@ -327,7 +299,7 @@ export default function IDRequestsAdminPage() {
                       )}
                     </div>
                     {viewing.signature_url
-                      ? <SignedImg bucket="id-signatures" ref={viewing.signature_url} alt="Signature" className="h-16 border border-border bg-white p-1 object-contain w-full" />
+                      ? <SignedImg bucket="id-signatures" path={viewing.signature_url} alt="Signature" className="h-16 border border-border bg-white p-1 object-contain w-full" />
                       : <span className="text-xs text-muted-foreground">Not provided</span>}
                   </div>
                 </div>

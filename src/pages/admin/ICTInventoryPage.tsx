@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import MainLayout from '@/components/layouts/MainLayout';
+import { ICTDeviceStatusBadge as StatusBadge } from '@/components/common/Badges';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -44,22 +45,6 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
 const typeIcon = (type: string) => TYPE_ICONS[type] ?? <Cpu className="w-4 h-4" />;
 const typeLabel = (type: string) => type.charAt(0).toUpperCase() + type.slice(1);
 const tabLabel = (type: string) => (/s$/i.test(type) ? typeLabel(type) : `${typeLabel(type)}s`);
-
-const STATUS_COLORS: Record<string, string> = {
-  active:       'border-green-500 text-green-600',
-  inactive:     'border-gray-400 text-gray-500',
-  under_repair: 'border-yellow-500 text-yellow-600',
-  retired:      'border-red-400 text-red-500',
-  suspended:    'border-orange-400 text-orange-500',
-};
-
-function StatusBadge({ status }: { status: string }) {
-  return (
-    <span className={`mono text-[10px] border px-1.5 py-0.5 ${STATUS_COLORS[status] ?? 'border-border text-muted-foreground'}`}>
-      {status.replace(/_/g,' ').toUpperCase()}
-    </span>
-  );
-}
 
 // ── CSV export / import ──────────────────────────────────────────────────────
 // One header list serves both directions: `exportDevicesCSV` writes these
@@ -1113,10 +1098,12 @@ export default function ICTInventoryPage() {
               className="border border-border text-xs" title="Download the listed rows as CSV">
               <FileDown className="w-3 h-3 mr-1" /> Export CSV
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => csvInputRef.current?.click()} disabled={importing}
-              className="border border-border text-xs" title="Import a CSV exported from this page">
-              <Upload className="w-3 h-3 mr-1" /> {importing ? 'Importing...' : 'Import CSV'}
-            </Button>
+            {isAdmin && (
+              <Button size="sm" variant="ghost" onClick={() => csvInputRef.current?.click()} disabled={importing}
+                className="border border-border text-xs" title="Import a CSV exported from this page">
+                <Upload className="w-3 h-3 mr-1" /> {importing ? 'Importing...' : 'Import CSV'}
+              </Button>
+            )}
             <input ref={csvInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleImport} />
             <Button size="sm" variant="ghost" onClick={reload} className="border border-border text-xs">
               <RefreshCw className="w-3 h-3 mr-1" /> Refresh
@@ -1127,13 +1114,15 @@ export default function ICTInventoryPage() {
                 <Settings2 className="w-3 h-3 mr-1" /> Manage Choices
               </Button>
             )}
-            <Button size="sm" onClick={() => isInternetTab
-              ? setInternetDialog({ open: true, editing: null })
-              : setDeviceDialog({ open: true, editing: null })}
-              className="text-xs">
-              <Plus className="w-3 h-3 mr-1" />
-              Add {isInternetTab ? 'Connection' : typeLabel(activeTab)}
-            </Button>
+            {isAdmin && (
+              <Button size="sm" onClick={() => isInternetTab
+                ? setInternetDialog({ open: true, editing: null })
+                : setDeviceDialog({ open: true, editing: null })}
+                className="text-xs">
+                <Plus className="w-3 h-3 mr-1" />
+                Add {isInternetTab ? 'Connection' : typeLabel(activeTab)}
+              </Button>
+            )}
           </div>
         </div>
 

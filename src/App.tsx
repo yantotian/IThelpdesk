@@ -1,7 +1,8 @@
 import React, { Suspense } from 'react';
-import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import IntersectObserver from '@/components/common/IntersectObserver';
 import PageLoader from '@/components/common/PageLoader';
+import { RouteGuard } from '@/components/common/RouteGuard';
 import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
@@ -14,12 +15,15 @@ const App: React.FC = () => {
       <AuthProvider>
         <IntersectObserver />
         <Suspense fallback={<PageLoader />}>
-          <Routes>
-            {routes.map((route, index) => (
-              <Route key={index} path={route.path} element={route.element} />
-            ))}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          {/* Redirects logged-out users to /login for non-public routes;
+              the API remains the authoritative guard. */}
+          <RouteGuard>
+            <Routes>
+              {routes.map((route, index) => (
+                <Route key={index} path={route.path} element={route.element} />
+              ))}
+            </Routes>
+          </RouteGuard>
         </Suspense>
         <Toaster theme="light" richColors />
       </AuthProvider>
