@@ -47,8 +47,10 @@ function Fail([string]$msg, [string]$hint = '') {
     exit 1
 }
 
-function Invoke-Native([string]$file, [string[]]$args, [string]$what) {
-    & $file @args
+function Invoke-Native([string]$file, [string[]]$cmdArgs, [string]$what) {
+    # NOTE: never name this parameter $args — it is a PowerShell automatic
+    # variable and binds as an empty array, silently dropping all arguments.
+    & $file @cmdArgs
     if ($LASTEXITCODE -ne 0) { Fail "$what failed (exit $LASTEXITCODE)." }
 }
 
