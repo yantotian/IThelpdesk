@@ -20,6 +20,8 @@ are all contained in this repository.
 - [Project layout](#project-layout)
 - [Database schema](#database-schema)
 - [Data and backups](#data-and-backups)
+- [Updating the application](#updating-the-application)
+- [Restoring from a backup](#restoring-from-a-backup)
 - [Roles](#roles)
 - [Adding a form](#adding-a-form)
 - [Reference folder](#reference-folder)
@@ -391,6 +393,102 @@ gunzip -c backup.sql.gz | docker compose exec -T db psql -U postgres helpdesk
 
 Because the schema is applied on every boot, restoring into an empty volume also
 works: start the stack first, then load the dump.
+
+---
+
+## Updating the application
+
+Updates are designed to be **non-destructive**: `schema.sql` is re-applied
+idempotently on every boot (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT
+EXISTS`, guarded seeds with `ON CONFLICT DO NOTHING`), so pulling new code and
+restarting never drops tables, rows, admin customisations, or the admin account.
+Your data lives in PostgreSQL and `server/uploads/`, physically separate from
+the code.
+
+### Recommended: one command
+
+```powershell
+.\scripts\update.ps1          # dev stack (Vite + API, hot reload)
+.\scripts\update.ps1 -Prod    # built single-process app on :3001
+```
+
+The script refuses to run on a dirty working tree, then in order:
+
+1. **Backup first** — `scripts\backup.ps1` (database dump + uploads archive,
+   verified with `pg_restore --list`, oldest pairs pruned to 7).
+2. **Schema gate** — diffs `server/src/db/schema.sql` against the incoming
+   commit and **aborts** if the new version adds `DROP TABLE`, `TRUNCATE`,
+   `DELETE FROM`, `DROP COLUMN`, `DROP SCHEMA` or `DROP DATABASE`. Review the
+   diff; if it is a deliberate migration, re-run with `-SkipSchemaGate`.
+3. `git pull --ff-only`, `npm ci` (root + server), build both halves.
+4. Restarts the stack, waits for `/api/health`, runs the smoke test and
+   requires `0 failed`.
+
+If the smoke test fails, the script prints the backup path and restore steps —
+it never auto-restores, because that would discard any data created after the
+update.
+
+### Manual fallback
+
+```powershell
+.\scripts\backup.ps1           # 1. always back up first
+git pull                       # 2. get the code
+npm ci                         # 3. dependencies (root)
+npm --prefix server ci         #    dependencies (API)
+npm run build                  # 4. frontend
+npm run server:build           #    API
+# 5. restart: .\scripts\dev.ps1   (or npm run server:start)
+node scripts/smoke-test.mjs http://localhost:3001
+```
+
+Before accepting any update that touches `server/src/db/schema.sql`, inspect it:
+
+```bash
+git diff HEAD@{1} -- server/src/db/schema.sql
+```
+
+### Backing up without Docker
+
+```powershell
+.\scripts\backup.ps1           # -> backups\helpdesk-<timestamp>.dump + uploads-<timestamp>.zip
+.\scripts\backup.ps1 -Keep 14  # keep 14 pairs instead of the default 7
+```
+
+`backups\` is gitignored — the dumps contain the entire user database.
+
+---
+
+## Restoring from a backup
+
+Stop the application first (close the dev window, or kill the processes on
+ports 3001/5173).
+
+**Database** — pick the dump to restore (list them with `Get-ChildItem backups`):
+
+```powershell
+$env:PGPASSWORD = '<password from server\.env DATABASE_URL>'
+& 'C:\Program Files\PostgreSQL\16\bin\pg_restore.exe' `
+    -U postgres -h localhost -d helpdesk --clean --if-exists --no-owner `
+    'backups\helpdesk-<timestamp>.dump'
+```
+
+`--clean --if-exists` drops and recreates objects from the dump; `--no-owner`
+avoids ownership errors when restoring as a different user.
+
+**Uploaded files** (attachments, ID photos, signatures):
+
+```powershell
+Expand-Archive 'backups\uploads-<timestamp>.zip' -DestinationPath 'server\uploads' -Force
+```
+
+Then restart (`.\scripts\dev.ps1`) and verify:
+
+```powershell
+node scripts/smoke-test.mjs http://localhost:3001
+```
+
+**Docker restores:** the original volume-based procedure above still applies
+unchanged if you go back to running with Docker.
 
 ---
 
