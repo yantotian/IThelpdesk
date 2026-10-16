@@ -32,6 +32,10 @@ function Stop-Tree([System.Diagnostics.Process]$p) {
     if ($p -and -not $p.HasExited) {
         # /T also stops the children (node running tsx/vite), which survive a
         # plain kill of the npm wrapper.
+        # Preference must be Continue here: if the process exits between the
+        # HasExited check and taskkill, taskkill's stderr becomes a
+        # NativeCommandError that would abort cleanup of the remaining child.
+        $ErrorActionPreference = 'Continue'
         & taskkill /PID $p.Id /T /F 2>$null | Out-Null
     }
 }
@@ -55,7 +59,7 @@ try {
     # Wait until either process exits (then tear the other one down too).
     while ($true) {
         $running = @($procs | Where-Object { -not $_.HasExited })
-        if ($running.Count -eq 0) { break }
+        if ($running.Count -lt $procs.Count) { break }
         Start-Sleep -Seconds 1
     }
 }

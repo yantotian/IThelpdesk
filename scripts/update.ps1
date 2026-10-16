@@ -8,9 +8,9 @@
     2. git fetch and show the incoming commits.
     3. SCHEMA GATE: diff server/src/db/schema.sql against the incoming commit.
        Aborts if new lines introduce destructive DDL (DROP TABLE, TRUNCATE,
-       DELETE FROM, DROP COLUMN, DROP SCHEMA, DROP DATABASE)  review manually,
+       DELETE FROM, DROP COLUMN, DROP SCHEMA, DROP DATABASE) - review manually,
        then re-run with -SkipSchemaGate to accept.
-    4. Fresh backup (scripts/backup.ps1)  always before anything changes.
+    4. Fresh backup (scripts/backup.ps1) - always before anything changes.
     5. Stop whatever runs on :3001/:5173 so installs/builds can replace files.
     6. git pull --ff-only.
     7. npm ci (root + server), then build frontend and API.
@@ -18,7 +18,7 @@
     9. Wait for /api/health, then run the smoke test (must be 0 failed).
 
   On failure the script prints the backup path and the restore steps; it never
-  restores automatically, because that would discard any post-update data 
+  restores automatically, because that would discard any post-update data -
   that decision stays with you.
 
 .EXAMPLE
@@ -48,29 +48,29 @@ function Fail([string]$msg, [string]$hint = '') {
 }
 
 function Invoke-Native([string]$file, [string[]]$cmdArgs, [string]$what) {
-    # NOTE: never name this parameter $args — it is a PowerShell automatic
+    # NOTE: never name this parameter $args - it is a PowerShell automatic
     # variable and binds as an empty array, silently dropping all arguments.
     & $file @cmdArgs
     if ($LASTEXITCODE -ne 0) { Fail "$what failed (exit $LASTEXITCODE)." }
 }
 
 try {
-    #  1. Clean working tree 
+    # -- 1. Clean working tree
     $dirty = & git status --porcelain
     if ($dirty) {
         Write-Host 'Uncommitted changes found:' -ForegroundColor Yellow
         $dirty | ForEach-Object { Write-Host "  $_" }
         Fail 'Commit (or stash) your changes before updating.' `
-            'Your local work is preserved  this prevents git pull from conflicting with it.'
+            'Your local work is preserved - this prevents git pull from conflicting with it.'
     }
     $headBefore = (& git rev-parse --short HEAD).Trim()
 
-    #  2. Fetch and show what is coming 
+    # -- 2. Fetch and show what is coming
     Write-Host 'Fetching origin ...' -ForegroundColor Cyan
     Invoke-Native 'git' @('fetch', 'origin', 'new-main') 'git fetch'
 
     $incoming = & git rev-list --count "HEAD..origin/new-main"
-    if ($LASTEXITCODE -ne 0) { Fail 'git rev-list failed  is origin/new-main reachable?' }
+    if ($LASTEXITCODE -ne 0) { Fail 'git rev-list failed - is origin/new-main reachable?' }
     if ("$incoming" -eq '0') {
         Write-Host 'Already up to date with origin/new-main. Re-verifying the current build.' -ForegroundColor Green
     } else {
@@ -80,7 +80,7 @@ try {
         & git diff --stat "HEAD..origin/new-main"
     }
 
-    #  3. Schema gate 
+    # -- 3. Schema gate
     # Only ADDED lines are inspected: schema.sql is re-applied on every boot,
     # so a destructive statement added there would execute against live data.
     # DROP TRIGGER/CONSTRAINT IF EXISTS are safe (re-created) and do not match.
@@ -102,37 +102,68 @@ try {
         Write-Host "Schema gate overridden (-SkipSchemaGate): $($bad.Count) destructive line(s) accepted." -ForegroundColor Yellow
     }
 
-    #  4. Backup before changing anything 
+    # -- 4. Backup before changing anything
     Write-Host ''
     Write-Host '=== Backing up before update ===' -ForegroundColor Cyan
     Invoke-Native 'powershell' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'backup.ps1')) 'backup.ps1'
     $latestDump = (Get-ChildItem (Join-Path $root 'backups') -Filter 'helpdesk-*.dump' | Sort-Object Name -Descending | Select-Object -First 1).FullName
 
-    #  5. Stop the running stack (before npm ci wipes node_modules) 
-    $stopped = @()
+    # -- 5. Stop the running stack (before npm ci wipes node_modules)
+    #  Killing only the port listener is not enough: `tsx watch` is the PARENT
+    #  of the API process, survives, respawns the child and re-grabs :3001.
+    #  So kill every project dev process (tsx/vite/npm/esbuild whose command
+    #  line points into this repo), then double-check the ports are free.
+    $self = $PID
+    $ancestors = @()
+    $probe = Get-CimInstance Win32_Process -Filter "ProcessId = $self"
+    while ($probe) {
+        $ancestors += [int]$probe.ProcessId
+        $parentId = [int]$probe.ParentProcessId
+        $probe = if ($parentId -gt 0) { Get-CimInstance Win32_Process -Filter "ProcessId = $parentId" } else { $null }
+    }
+    $escapedRoot = [WildcardPattern]::Escape($root)
+    $devProcs = @(Get-CimInstance Win32_Process | Where-Object {
+        $_.Name -match '^(node|esbuild)\.exe$' -and
+        $_.CommandLine -and
+        $_.CommandLine -like "*$escapedRoot*" -and
+        $_.CommandLine -match '(?i)(tsx|vite|npm-cli|esbuild)' -and
+        ($ancestors -notcontains [int]$_.ProcessId)
+    })
+    foreach ($proc in $devProcs) {
+        & taskkill /PID $proc.ProcessId /T /F
+    }
+    if ($devProcs.Count -gt 0) {
+        Write-Host "Stopped $($devProcs.Count) dev process tree(s)." -ForegroundColor Yellow
+    }
+    #  Fallback: anything still listening on our ports (e.g. run from a copy of
+    #  the repo elsewhere) - but never touch unrelated processes.
     foreach ($port in 3001, 5173) {
         Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | ForEach-Object {
             $opid = $_.OwningProcess
             $proc = Get-Process -Id $opid -ErrorAction SilentlyContinue
-            if ($proc -and $proc.ProcessName -match 'node|powershell|cmd') {
+            if ($proc -and $proc.ProcessName -match 'node') {
                 & taskkill /PID $opid /T /F
-                $stopped += "$($proc.ProcessName) ($opid) on :$port"
-            } else {
-                Fail "Port $port is occupied by '$($proc.ProcessName)'  stop it manually and re-run."
+            } elseif ($proc) {
+                Fail "Port $port is occupied by '$($proc.ProcessName)' - stop it manually and re-run."
             }
         }
     }
-    if ($stopped.Count -gt 0) {
-        Write-Host "Stopped: $($stopped -join ', ')" -ForegroundColor Yellow
-        Start-Sleep -Seconds 2
+    #  Wait until both ports are actually free, so the new stack cannot race a
+    #  dying process for them.
+    $free = $false
+    for ($i = 0; $i -lt 20; $i++) {
+        $busy = @(Get-NetTCPConnection -LocalPort 3001, 5173 -State Listen -ErrorAction SilentlyContinue)
+        if ($busy.Count -eq 0) { $free = $true; break }
+        Start-Sleep -Seconds 1
     }
+    if (-not $free) { Fail 'Ports 3001/5173 are still in use after stopping the dev stack.' }
 
-    #  6. Pull 
+    # -- 6. Pull
     Write-Host ''
     Write-Host '=== Pulling ===' -ForegroundColor Cyan
     Invoke-Native 'git' @('pull', '--ff-only', 'origin', 'new-main') 'git pull'
 
-    #  7. Dependencies + builds 
+    # -- 7. Dependencies + builds
     Write-Host ''
     Write-Host '=== Installing dependencies ===' -ForegroundColor Cyan
     Invoke-Native 'npm.cmd' @('ci', '--no-audit', '--no-fund') 'npm ci (root)'
@@ -143,7 +174,7 @@ try {
     Invoke-Native 'npm.cmd' @('run', 'build') 'frontend build'
     Invoke-Native 'npm.cmd' @('run', 'server:build') 'API build'
 
-    #  8. Start the stack 
+    # -- 8. Start the stack
     $mode = if ($Prod) { 'production' } else { 'dev' }
     Write-Host ''
     Write-Host "=== Starting ($mode mode) ===" -ForegroundColor Cyan
@@ -154,7 +185,7 @@ try {
         Start-Process powershell -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $PSScriptRoot 'dev.ps1') -WorkingDirectory $root
     }
 
-    #  9. Health + smoke test 
+    # -- 9. Health + smoke test
     $health = $false
     for ($i = 0; $i -lt 40; $i++) {
         try {
@@ -180,7 +211,7 @@ try {
     $summary = ($smokeOut | Out-String) -match '(\d+)\s+passed,\s+(\d+)\s+failed'
     $failedCount = if ($summary) { [int]$Matches[2] } else { -1 }
 
-    #  10. Report 
+    # -- 10. Report
     Write-Host ''
     if ($smokeExit -eq 0 -and $failedCount -eq 0) {
         $headAfter = (& git rev-parse --short HEAD).Trim()
@@ -198,7 +229,7 @@ try {
         Write-Host '  Get-NetTCPConnection -LocalPort 3001,5173 -State Listen | ForEach-Object { taskkill /PID $_.OwningProcess /T /F }'
     } else {
         Write-Host ('=' * 64) -ForegroundColor Red
-        Write-Host 'UPDATE FINISHED BUT SMOKE TEST FAILED  data itself was not modified by the test.' -ForegroundColor Red
+        Write-Host 'UPDATE FINISHED BUT SMOKE TEST FAILED - data itself was not modified by the test.' -ForegroundColor Red
         Write-Host "Latest backup: $latestDump" -ForegroundColor Yellow
         Write-Host 'Restore steps: README "Restoring from a backup".' -ForegroundColor Yellow
         Write-Host 'Diagnose first: check the app window output; re-run scripts\smoke-test.mjs.' -ForegroundColor Yellow

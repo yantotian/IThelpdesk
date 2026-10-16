@@ -32,7 +32,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $backupDir = Join-Path $root 'backups'
 $pgBin = 'C:\Program Files\PostgreSQL\16\bin'
 
-#  Locate pg_dump 
+# -- Locate pg_dump
 if (-not (Test-Path (Join-Path $pgBin 'pg_dump.exe'))) {
     # Fall back to PATH so a different PostgreSQL version still works.
     $pgBin = ''
@@ -46,7 +46,7 @@ if (-not (Test-Path (Join-Path $pgBin 'pg_dump.exe'))) {
 $pgDump = if ($pgBin) { Join-Path $pgBin 'pg_dump.exe' } else { 'pg_dump' }
 $pgRestore = if ($pgBin) { Join-Path $pgBin 'pg_restore.exe' } else { 'pg_restore' }
 
-#  Resolve DATABASE_URL (server\.env first, then root .env) 
+# -- Resolve DATABASE_URL (server\.env first, then root .env)
 if (-not $DatabaseUrl) {
     foreach ($file in (Join-Path $root 'server\.env'), (Join-Path $root '.env')) {
         if (-not (Test-Path $file)) { continue }
@@ -62,7 +62,7 @@ if (-not $DatabaseUrl) {
     exit 1
 }
 
-#  Parse the connection string for pg_dump/pg_restore 
+# -- Parse the connection string for pg_dump/pg_restore
 # postgres://user:pass@host:port/dbname  (password may be URL-encoded)
 try {
     $uri = [System.Uri]$DatabaseUrl
@@ -87,7 +87,7 @@ $suffix = if ($Tag) { "-$Tag" } else { '' }
 $dumpFile = Join-Path $backupDir "helpdesk-$stamp$suffix.dump"
 $zipFile = Join-Path $backupDir "uploads-$stamp$suffix.zip"
 
-#  1. Database dump 
+# -- 1. Database dump
 Write-Host "Dumping database '$dbName' -> $dumpFile" -ForegroundColor Cyan
 & $pgDump -Fc -f $dumpFile @pgArgs
 if ($LASTEXITCODE -ne 0) {
@@ -96,7 +96,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-#  2. Verify the dump is readable (catches truncated/corrupt backups) 
+# -- 2. Verify the dump is readable (catches truncated/corrupt backups)
 Write-Host 'Verifying dump ...' -ForegroundColor Cyan
 & $pgRestore --list $dumpFile | Out-Null
 if ($LASTEXITCODE -ne 0) {
@@ -105,7 +105,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-#  3. Uploaded files (attachments, ID photos/signatures) 
+# -- 3. Uploaded files (attachments, ID photos/signatures)
 $uploadsDir = Join-Path $root 'server\uploads'
 $haveUploads = $false
 if (Test-Path $uploadsDir) {
@@ -113,10 +113,10 @@ if (Test-Path $uploadsDir) {
     Compress-Archive -Path (Join-Path $uploadsDir '*') -DestinationPath $zipFile -Force
     $haveUploads = $true
 } else {
-    Write-Host 'No server\uploads folder found  skipping file archive.' -ForegroundColor Yellow
+    Write-Host 'No server\uploads folder found - skipping file archive.' -ForegroundColor Yellow
 }
 
-#  4. Prune old pairs, keep the $Keep newest 
+# -- 4. Prune old pairs, keep the $Keep newest
 $oldDumps = Get-ChildItem $backupDir -Filter 'helpdesk-*.dump' |
     Sort-Object Name -Descending |
     Select-Object -Skip $Keep
@@ -128,7 +128,7 @@ foreach ($old in $oldDumps) {
     Write-Host "Pruned old backup: $($old.Name)" -ForegroundColor DarkGray
 }
 
-#  5. Summary 
+# -- 5. Summary
 $dumpSize = '{0:N1} MB' -f ((Get-Item $dumpFile).Length / 1MB)
 Write-Host ''
 Write-Host 'Backup complete.' -ForegroundColor Green
