@@ -5,3 +5,9 @@ dist/
 .env.*.local
 *.log
 supabase/.temp/
+# Runtime file storage (ticket attachments, ID photos/signatures) — local runs
+# write here; Docker uses a named volume.
+uploads/
+# Backup dumps + uploads archives created by scripts/backup.ps1. They contain
+# the entire user database, so they must never be committed.
+backups/

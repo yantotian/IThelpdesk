@@ -168,6 +168,13 @@ npm run dev
 
 Vite serves the app on **http://localhost:5173** and proxies `/api` to port 3001.
 
+**Windows shortcut:** `scripts/dev.ps1` starts both processes in one terminal
+and stops them together on Ctrl+C:
+
+```powershell
+.\scripts\dev.ps1
+```
+
 To run the built app from a single process instead, build both and start the API,
 which serves the frontend files itself:
 

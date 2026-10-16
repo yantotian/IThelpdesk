@@ -8,6 +8,7 @@
  * signed file URLs, and confirms protected data is NOT publicly readable.
  */
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
 const BASE = (process.argv[2] || 'http://localhost:8080').replace(/\/$/, '');
 
@@ -44,6 +45,27 @@ async function req(path, { method = 'GET', token, body, raw } = {}) {
 
 const uniq = () => randomUUID();
 
+// Bootstrap-admin credentials. Defaults to the documented admin/admin123, but
+// reads ADMIN_USERNAME/ADMIN_PASSWORD from server/.env (non-Docker) or the root
+// .env (Docker) so the test also passes on installs seeded with a real password.
+// Explicit environment variables win over both files.
+function readEnvFile(relPath) {
+  try {
+    const text = readFileSync(new URL(relPath, import.meta.url), 'utf8');
+    const out = {};
+    for (const line of text.split(/\r?\n/)) {
+      const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/.exec(line);
+      if (m && !line.trimStart().startsWith('#')) out[m[1]] = m[2];
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+const fileEnv = { ...readEnvFile('../.env'), ...readEnvFile('../server/.env') };
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || fileEnv.ADMIN_USERNAME || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || fileEnv.ADMIN_PASSWORD || 'admin123';
+
 console.log(`\nSmoke test against ${BASE}\n`);
 
 // ── health ───────────────────────────────────────────────────────────────────
@@ -55,7 +77,7 @@ check('GET /api/health returns ok', health.status === 200 && health.data?.status
 console.log('\nauth');
 const admin = await req('/api/auth/login', {
   method: 'POST',
-  body: { username: 'admin', password: 'admin123' },
+  body: { username: ADMIN_USERNAME, password: ADMIN_PASSWORD },
 });
 check('admin can log in', admin.status === 200 && !!admin.data?.token, `status ${admin.status}`);
 check('admin has sysadmin role', admin.data?.user?.role === 'sysadmin');
