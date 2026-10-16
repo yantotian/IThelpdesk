@@ -6,7 +6,8 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc && node -e \"require('fs').cpSync('src/db/schema.sql','dist/db/schema.sql')\"",
     "start": "node dist/index.js",
-    "db:init": "tsx src/db/init.ts"
+    "db:init": "tsx src/db/init.ts",
+    "admin:reset-password": "tsx src/db/resetAdminPassword.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -206,6 +206,15 @@ or set a different password before the first boot with `ADMIN_PASSWORD` in `.env
 > This is deliberate: it fails closed instead of running with known secrets.
 > Development keeps the convenient defaults above.
 
+**Locked out?** `ADMIN_PASSWORD` is applied only when the admin account is
+first created — editing `.env` afterwards does nothing, so the stored hash can
+drift away from the config. To force the stored password back in sync:
+
+```bash
+# reads ADMIN_USERNAME / ADMIN_PASSWORD from server/.env
+npm --prefix server run admin:reset-password
+```
+
 ---
 
 ## Environment variables

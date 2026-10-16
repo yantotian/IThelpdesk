@@ -11,9 +11,3 @@ uploads/
 # Backup dumps + uploads archives created by scripts/backup.ps1. They contain
 # the entire user database, so they must never be committed.
 backups/
-server/
-server/.env
-server/.env.local
-server/.env.*.local
-server/backups/
-server/uploads/
