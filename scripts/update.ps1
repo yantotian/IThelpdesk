@@ -175,6 +175,8 @@ try {
     Write-Host '=== Smoke test ===' -ForegroundColor Cyan
     $smokeOut = & node scripts/smoke-test.mjs 'http://localhost:3001'
     $smokeExit = $LASTEXITCODE
+    # Echo the captured output so a failure can be diagnosed from this log.
+    $smokeOut | ForEach-Object { Write-Host $_ }
     $summary = ($smokeOut | Out-String) -match '(\d+)\s+passed,\s+(\d+)\s+failed'
     $failedCount = if ($summary) { [int]$Matches[2] } else { -1 }
 
