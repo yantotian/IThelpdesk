@@ -162,6 +162,8 @@ CREATE TABLE IF NOT EXISTS id_requests (
   emergency_name text NOT NULL,
   emergency_contact text NOT NULL,
   emergency_address text NOT NULL,
+  -- Checkbox group: any combination of the two options (or both).
+  id_type text[] CHECK (id_type IS NULL OR (cardinality(id_type) > 0 AND id_type <@ ARRAY['Official ID','Office ID'])),
   photo_url text,
   signature_url text,
   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
@@ -170,6 +172,26 @@ CREATE TABLE IF NOT EXISTS id_requests (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Added after first release; NULL on rows created before the field existed.
+-- id_type is a checkbox group (Official ID and/or Office ID), so the column
+-- holds an array. Databases that already carry the earlier single-value `text`
+-- column are converted in place — the old value becomes a one-element array —
+-- and the CHECK is rebuilt either way. Runs on every boot, so it is a no-op
+-- once the column is text[].
+ALTER TABLE id_requests ADD COLUMN IF NOT EXISTS id_type text[];
+DO $$ BEGIN
+  ALTER TABLE id_requests DROP CONSTRAINT IF EXISTS id_requests_id_type_check;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'id_requests' AND column_name = 'id_type' AND data_type = 'text'
+  ) THEN
+    ALTER TABLE id_requests ALTER COLUMN id_type TYPE text[]
+      USING (CASE WHEN id_type IS NULL THEN NULL ELSE ARRAY[id_type] END);
+  END IF;
+  ALTER TABLE id_requests ADD CONSTRAINT id_requests_id_type_check
+    CHECK (id_type IS NULL OR (cardinality(id_type) > 0 AND id_type <@ ARRAY['Official ID','Office ID']));
+END $$;
 
 -- ICT Devices
 -- device_type and storage_type are NOT constrained here: the allowed values are

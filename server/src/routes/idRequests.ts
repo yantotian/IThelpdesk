@@ -58,18 +58,37 @@ router.get('/my', async (req: AuthRequest, res) => {
   }
 });
 
+// Allowed ID types for a request. Mirrors the choices in the New Request form
+// (a checkbox group, so any combination is allowed) and the CHECK constraint
+// on id_requests.id_type.
+const ID_TYPES = ['Official ID', 'Office ID'];
+
 // Submit ID request
 router.post('/', async (req: AuthRequest, res) => {
   try {
-    const { office_name, full_name, nickname, id_number, position, address, emergency_name, emergency_contact, emergency_address, photo_url, signature_url } = req.body;
+    const { office_name, full_name, nickname, id_number, position, address, emergency_name, emergency_contact, emergency_address, id_type, photo_url, signature_url } = req.body;
     if (!office_name || !full_name || !id_number || !position || !address || !emergency_name || !emergency_contact || !emergency_address) {
       res.status(400).json({ error: 'All required fields must be provided' });
       return;
     }
+    if (
+      !Array.isArray(id_type) ||
+      id_type.length === 0 ||
+      !id_type.every((t: unknown) => ID_TYPES.includes(t as string))
+    ) {
+      res.status(400).json({ error: 'ID Type must include Official ID, Office ID, or both' });
+      return;
+    }
+    // The ID photo is mandatory — the form enforces it too, but the API is the
+    // guarantee (the signature stays optional, as it always has been).
+    if (!photo_url) {
+      res.status(400).json({ error: 'ID photo is required' });
+      return;
+    }
 
     const requests = await sql`
-      INSERT INTO id_requests (requester_id, office_name, full_name, nickname, id_number, position, address, emergency_name, emergency_contact, emergency_address, photo_url, signature_url)
-      VALUES (${req.user!.id}, ${office_name}, ${full_name}, ${nickname || null}, ${id_number}, ${position}, ${address}, ${emergency_name}, ${emergency_contact}, ${emergency_address}, ${photo_url || null}, ${signature_url || null})
+      INSERT INTO id_requests (requester_id, office_name, full_name, nickname, id_number, position, address, emergency_name, emergency_contact, emergency_address, id_type, photo_url, signature_url)
+      VALUES (${req.user!.id}, ${office_name}, ${full_name}, ${nickname || null}, ${id_number}, ${position}, ${address}, ${emergency_name}, ${emergency_contact}, ${emergency_address}, ${id_type}, ${photo_url}, ${signature_url || null})
       RETURNING *
     `;
     res.status(201).json(requests[0]);

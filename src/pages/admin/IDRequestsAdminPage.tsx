@@ -38,14 +38,14 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function exportCSV(rows: IDRequest[]) {
-  const headers = ['Submitted', 'Full Name', 'Nickname', 'ID Number', 'Office', 'Position', 'Address',
+  const headers = ['Submitted', 'Full Name', 'Nickname', 'ID Number', 'ID Type', 'Office', 'Position', 'Address',
     'Emergency Name', 'Emergency Contact', 'Emergency Address', 'Status', 'Paid', 'Notes'];
   const escape = (v: string | null | undefined) => `"${(v ?? '').replace(/"/g, '""')}"`;
   const lines = [
     headers.join(','),
     ...rows.map(r => [
       formatUtc8Date(r.created_at),
-      r.full_name, r.nickname ?? '', r.id_number, r.office_name, r.position, r.address,
+      r.full_name, r.nickname ?? '', r.id_number, r.id_type?.join(' / ') ?? '', r.office_name, r.position, r.address,
       r.emergency_name, r.emergency_contact, r.emergency_address,
       r.status, r.is_paid ? 'Yes' : 'No', r.notes ?? '',
     ].map(escape).join(',')),
@@ -288,7 +288,7 @@ export default function IDRequestsAdminPage() {
                 <div>
                   <div className="mono text-[10px] text-muted-foreground tracking-widest mb-2">EMPLOYEE INFORMATION</div>
                   <div className="grid grid-cols-2 gap-2">
-                    {([['Office', viewing.office_name],['Full Name', viewing.full_name],['Nickname', viewing.nickname||'—'],['ID Number', viewing.id_number],['Position', viewing.position],['Address', viewing.address]] as [string,string][]).map(([l,v]) => (
+                    {([['Office', viewing.office_name],['Full Name', viewing.full_name],['Nickname', viewing.nickname||'—'],['ID Number', viewing.id_number],['ID Type', viewing.id_type?.join(' / ') || '—'],['Position', viewing.position],['Address', viewing.address]] as [string,string][]).map(([l,v]) => (
                       <div key={l}><span className="text-xs text-muted-foreground block">{l}</span><span className="font-medium">{v}</span></div>
                     ))}
                   </div>

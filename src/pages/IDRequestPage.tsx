@@ -22,7 +22,7 @@ import {
   getSignedStorageUrl,
 } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import type { IDRequest } from "@/types/types";
+import { ID_TYPES, type IDType, type IDRequest } from "@/types/types";
 import { formatUtc8Date } from "@/lib/utils";
 
 interface EmergencyContact {
@@ -36,6 +36,8 @@ interface IDForm {
   nickname: string;
   id_number: string;
   position: string;
+  // Checkbox group: any combination of Official ID / Office ID.
+  id_type: IDType[];
   address: string;
   emergency: EmergencyContact;
 }
@@ -45,6 +47,7 @@ const EMPTY_FORM: IDForm = {
   nickname: "",
   id_number: "",
   position: "",
+  id_type: [],
   address: "",
   emergency: { name: "", contact: "", address: "" },
 };
@@ -430,7 +433,9 @@ function MyRequestsTab() {
                 {r.full_name}
               </div>
               <div className="mono text-[10px] text-muted-foreground tracking-widest">
-                {r.id_number} · {r.position}
+                {[r.id_number, ...(r.id_type ?? []), r.position]
+                  .filter(Boolean)
+                  .join(" · ")}
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -533,10 +538,20 @@ export default function IDRequestPage() {
   const photoFileRef = useRef<HTMLInputElement>(null);
   const sigFileRef = useRef<HTMLInputElement>(null);
 
-  const setField = (f: keyof Omit<IDForm, "emergency">, v: string) =>
+  const setField = (f: keyof Omit<IDForm, "emergency" | "id_type">, v: string) =>
     setForm((p) => ({ ...p, [f]: v }));
   const setEmergency = (f: keyof EmergencyContact, v: string) =>
     setForm((p) => ({ ...p, emergency: { ...p.emergency, [f]: v } }));
+  // Checkbox group: Official ID, Office ID, or both. Always builds a new array —
+  // EMPTY_FORM.id_type is shared with the initial/reset state and must not be
+  // mutated in place.
+  const toggleIdType = (t: IDType) =>
+    setForm((p) => ({
+      ...p,
+      id_type: p.id_type.includes(t)
+        ? p.id_type.filter((x) => x !== t)
+        : [...p.id_type, t],
+    }));
 
   const handlePhotoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -602,8 +617,12 @@ export default function IDRequestPage() {
         return;
       }
     }
-    if (!signatureDataUrl) {
-      toast.error("Signature is required");
+    if (form.id_type.length === 0) {
+      toast.error("Select Official ID, Office ID, or both");
+      return;
+    }
+    if (!photoDataUrl || !photoFile) {
+      toast.error("ID Photo is required");
       return;
     }
     if (!profile?.id) {
@@ -622,6 +641,7 @@ export default function IDRequestPage() {
         emergency_name: form.emergency.name,
         emergency_contact: form.emergency.contact,
         emergency_address: form.emergency.address,
+        id_type: form.id_type,
         photoFile,
         signatureDataUrl,
         userId: profile.id,
@@ -707,6 +727,7 @@ export default function IDRequestPage() {
                       ["Name", form.full_name],
                       ["Nickname", form.nickname || "—"],
                       ["ID Number", form.id_number],
+                      ["ID Type", form.id_type.join(", ")],
                       ["Position", form.position],
                       ["Address", form.address],
                       ["Emergency Contact", form.emergency.name],
@@ -801,10 +822,10 @@ export default function IDRequestPage() {
                           )}
                         </Label>
                         <Input
-                          value={form[field as keyof Omit<IDForm, "emergency">]}
+                          value={form[field as keyof Omit<IDForm, "emergency" | "id_type">]}
                           onChange={(e) =>
                             setField(
-                              field as keyof Omit<IDForm, "emergency">,
+                              field as keyof Omit<IDForm, "emergency" | "id_type">,
                               e.target.value,
                             )
                           }
@@ -813,6 +834,33 @@ export default function IDRequestPage() {
                         />
                       </div>
                     ))}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">
+                        ID Type <span className="text-destructive">*</span>
+                      </Label>
+                      <div className="flex items-center gap-5 h-9">
+                        {ID_TYPES.map((t) => {
+                          const id = `id-type-${t.toLowerCase().replace(/\s+/g, "-")}`;
+                          return (
+                            <div key={t} className="flex items-center gap-2">
+                              <input
+                                id={id}
+                                type="checkbox"
+                                checked={form.id_type.includes(t)}
+                                onChange={() => toggleIdType(t)}
+                                className="h-4 w-4 accent-primary"
+                              />
+                              <Label
+                                htmlFor={id}
+                                className="text-sm font-normal cursor-pointer"
+                              >
+                                {t}
+                              </Label>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                     <div className="space-y-1.5 md:col-span-2">
                       <Label className="text-xs font-semibold">
                         Address <span className="text-destructive">*</span>
@@ -879,15 +927,17 @@ export default function IDRequestPage() {
                 <section className="border border-border bg-card">
                   <div className="px-5 py-3 border-b border-border">
                     <span className="mono text-[10px] text-muted-foreground tracking-widest">
-                      ID PHOTO
+                      ID PHOTO <span className="text-destructive ml-1">*</span>
                     </span>
                   </div>
                   <div className="p-5 space-y-3">
                     <p className="text-xs text-muted-foreground">
-                      ID photo must not exceed 2MB.
+                      A clear photo of the ID holder is required. It must not
+                      exceed 2MB.
                     </p>
                     <MediaSection
                       label="Upload or Capture Photo"
+                      required
                       preview={photoDataUrl}
                       mode={photoMode}
                       setMode={setPhotoMode}
@@ -896,6 +946,8 @@ export default function IDRequestPage() {
                       onRemove={() => {
                         setPhotoDataUrl(null);
                         setPhotoFile(null);
+                        // Allow re-selecting the same file after a mistake.
+                        if (photoFileRef.current) photoFileRef.current.value = "";
                       }}
                       fileInputRef={photoFileRef}
                     />
@@ -905,22 +957,25 @@ export default function IDRequestPage() {
                 <section className="border border-border bg-card">
                   <div className="px-5 py-3 border-b border-border">
                     <span className="mono text-[10px] text-muted-foreground tracking-widest">
-                      SIGNATURE <span className="text-destructive ml-1">*</span>
+                      SIGNATURE <span className="text-muted-foreground">(OPTIONAL)</span>
                     </span>
                   </div>
                   <div className="p-5 space-y-3">
                     <p className="text-xs text-muted-foreground">
-                      Signature must not exceed 2MB.
+                      Skip this if you prefer to sign on a printed copy. Any
+                      signature you add must not exceed 2MB.
                     </p>
                     <MediaSection
                       label="Draw, upload, or capture your signature"
-                      required
                       preview={signatureDataUrl}
                       mode={sigMode}
                       setMode={setSigMode}
                       onFileUpload={handleSigFile}
                       onCameraCapture={(url) => setSignatureDataUrl(url)}
-                      onRemove={() => setSignatureDataUrl(null)}
+                      onRemove={() => {
+                        setSignatureDataUrl(null);
+                        if (sigFileRef.current) sigFileRef.current.value = "";
+                      }}
                       fileInputRef={sigFileRef}
                       showDraw
                       onDraw={(url) => setSignatureDataUrl(url)}

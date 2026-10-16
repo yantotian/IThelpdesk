@@ -89,18 +89,17 @@ export async function submitIDRequest(payload: {
   office_name: string; full_name: string; nickname: string; id_number: string;
   position: string; address: string;
   emergency_name: string; emergency_contact: string; emergency_address: string;
-  photoFile?: File | null; signatureDataUrl?: string | null;
+  id_type: string[];
+  photoFile: File; signatureDataUrl?: string | null;
   userId: string;
 }): Promise<void> {
   let photo_url: string | null = null;
   let signature_url: string | null = null;
 
-  if (payload.photoFile) {
-    const formData = new FormData();
-    formData.append('file', payload.photoFile);
-    const result = await api.upload<{ path: string }>('/upload/id-photos', formData);
-    photo_url = result.path;
-  }
+  const formData = new FormData();
+  formData.append('file', payload.photoFile);
+  const result = await api.upload<{ path: string }>('/upload/id-photos', formData);
+  photo_url = result.path;
 
   if (payload.signatureDataUrl) {
     const res = await fetch(payload.signatureDataUrl);
@@ -122,6 +121,7 @@ export async function submitIDRequest(payload: {
     emergency_name: payload.emergency_name,
     emergency_contact: payload.emergency_contact,
     emergency_address: payload.emergency_address,
+    id_type: payload.id_type,
     photo_url,
     signature_url,
   });

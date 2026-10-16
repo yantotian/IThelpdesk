@@ -147,6 +147,12 @@ export interface AppNotification {
 
 export type IDRequestStatus = 'pending' | 'approved' | 'rejected';
 
+/** Which card(s) are being requested — a checkbox group in the New Request
+ *  form, so a request may carry Official ID, Office ID, or both. */
+export type IDType = 'Official ID' | 'Office ID';
+
+export const ID_TYPES: IDType[] = ['Official ID', 'Office ID'];
+
 export interface IDRequest {
   id: string;
   requester_id: string;
@@ -159,6 +165,8 @@ export interface IDRequest {
   emergency_name: string;
   emergency_contact: string;
   emergency_address: string;
+  // checkbox group: may hold both; null on requests submitted before the field existed
+  id_type: IDType[] | null;
   photo_url: string | null;
   signature_url: string | null;
   status: IDRequestStatus;
