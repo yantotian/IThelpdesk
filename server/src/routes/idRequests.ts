@@ -98,7 +98,7 @@ router.post('/', async (req: AuthRequest, res) => {
   }
 });
 
-// Update ID request status (admin only)
+// Update ID request status and note for the requester (admin only)
 router.put('/:id/status', requireRole('it_admin', 'sysadmin'), async (req, res) => {
   try {
     const { id } = req.params;
@@ -107,7 +107,26 @@ router.put('/:id/status', requireRole('it_admin', 'sysadmin'), async (req, res) 
       res.status(400).json({ error: 'Invalid status' });
       return;
     }
-    await sql`UPDATE id_requests SET status = ${status}, notes = ${notes || null} WHERE id = ${id}`;
+    const targets = await sql`SELECT requester_id FROM id_requests WHERE id = ${id} LIMIT 1`;
+    if (targets.length === 0) {
+      res.status(404).json({ error: 'ID request not found' });
+      return;
+    }
+    await sql`UPDATE id_requests SET status = ${status}, notes = ${notes || null}, updated_at = now() WHERE id = ${id}`;
+
+    // Tell the requester: the note also appears under ADMIN NOTE on their
+    // My Requests tab, this puts it in front of them. A notification failure
+    // must not undo the status update.
+    try {
+      await sql`
+        INSERT INTO notifications (user_id, type, title, body)
+        VALUES (${targets[0].requester_id}, 'system', ${`ID Request — ${status}`},
+                ${notes || 'The administrator updated the status of your ID request.'})
+      `;
+    } catch (notifyError) {
+      console.error('ID request notification error:', notifyError);
+    }
+
     res.json({ message: 'ID request status updated' });
   } catch (error) {
     console.error('Update ID request status error:', error);

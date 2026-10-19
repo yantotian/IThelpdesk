@@ -319,6 +319,30 @@ const techRoleChange = await req(`/api/profiles/${requester.data?.id}/role`, {
 });
 check('technician cannot change roles', techRoleChange.status === 403, `status ${techRoleChange.status}`);
 
+// ID request status updates — RBAC and validation only. The happy path would
+// leave an id_requests row behind (no delete endpoint), so it is verified
+// manually instead of polluting the database on every run.
+const idStatusByRequester = await req(`/api/id-requests/${randomUUID()}/status`, {
+  method: 'PUT',
+  token: reqToken,
+  body: { status: 'approved' },
+});
+check('requester cannot update an ID request status', idStatusByRequester.status === 403, `status ${idStatusByRequester.status}`);
+
+const idStatusMissing = await req(`/api/id-requests/${randomUUID()}/status`, {
+  method: 'PUT',
+  token: adminToken,
+  body: { status: 'approved' },
+});
+check('updating an unknown ID request returns 404', idStatusMissing.status === 404, `status ${idStatusMissing.status}`);
+
+const idStatusBadValue = await req(`/api/id-requests/${randomUUID()}/status`, {
+  method: 'PUT',
+  token: adminToken,
+  body: { status: 'rubber_stamped' },
+});
+check('invalid ID request status is rejected with 400', idStatusBadValue.status === 400, `status ${idStatusBadValue.status}`);
+
 // ── ticket write authorization (server-side, not just hidden in the UI) ──────
 console.log('\nticket write authorization');
 const foreignStatus = await req(`/api/tickets/${ticket.id}/status`, {

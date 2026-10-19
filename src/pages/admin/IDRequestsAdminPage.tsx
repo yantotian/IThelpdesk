@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { RefreshCw, Eye, CheckCircle, XCircle, Search, Download, CreditCard, FileDown } from 'lucide-react';
+import { RefreshCw, Eye, CheckCircle, XCircle, Search, Download, CreditCard, FileDown, Send } from 'lucide-react';
 import { formatUtc8Date, formatUtc8DateStamp } from '@/lib/utils';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -61,6 +61,10 @@ export default function IDRequestsAdminPage() {
   const [viewing, setViewing] = useState<IDRequest | null>(null);
   const [actionTarget, setActionTarget] = useState<{ req: IDRequest; action: 'approved' | 'rejected' } | null>(null);
   const [notes, setNotes] = useState('');
+  // Status update form inside the detail dialog — lets the admin change the
+  // status and rewrite the note at any time, not only on the first review.
+  const [updStatus, setUpdStatus] = useState('pending');
+  const [updNotes, setUpdNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [togglingPaid, setTogglingPaid] = useState<string | null>(null);
 
@@ -88,6 +92,20 @@ export default function IDRequestsAdminPage() {
       await updateIDRequestStatus(actionTarget.req.id, actionTarget.action, notes);
       toast.success(`Request ${actionTarget.action}`);
       setActionTarget(null); setNotes(''); setViewing(null);
+      await reload();
+    } catch (e: any) { toast.error(e.message); }
+    setSaving(false);
+  };
+
+  // Send a status + note update to the requester (works on any request, not
+  // just pending ones — the AlertDialog above is only the fast first review).
+  const handleUpdateStatus = async () => {
+    if (!viewing) return;
+    setSaving(true);
+    try {
+      await updateIDRequestStatus(viewing.id, updStatus, updNotes.trim() || undefined);
+      toast.success('Status updated — the requester has been notified');
+      setViewing(null);
       await reload();
     } catch (e: any) { toast.error(e.message); }
     setSaving(false);
@@ -212,7 +230,7 @@ export default function IDRequestsAdminPage() {
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => setViewing(r)} className="h-7 px-2 border border-border text-xs">
+                        <Button size="sm" variant="ghost" onClick={() => { setViewing(r); setUpdStatus(r.status); setUpdNotes(r.notes ?? ''); }} className="h-7 px-2 border border-border text-xs">
                           <Eye className="w-3 h-3 mr-1" /> View
                         </Button>
                         {r.status === 'pending' && (
@@ -309,6 +327,30 @@ export default function IDRequestsAdminPage() {
                     <p className="text-sm border border-border bg-muted/30 px-3 py-2">{viewing.notes}</p>
                   </div>
                 )}
+                <div className="border-t border-border pt-4 space-y-3">
+                  <div className="mono text-[10px] text-muted-foreground tracking-widest">UPDATE STATUS &amp; NOTE FOR THE REQUESTER</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Status</Label>
+                      <Select value={updStatus} onValueChange={setUpdStatus}>
+                        <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="approved">Approved</SelectItem>
+                          <SelectItem value="rejected">Rejected</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Note</Label>
+                    <Textarea value={updNotes} onChange={e => setUpdNotes(e.target.value)} rows={3} className="text-sm"
+                      placeholder="Message to the requester — shown under ADMIN NOTE on their My Requests tab and sent as a notification. Leave blank to clear." />
+                  </div>
+                  <Button size="sm" onClick={handleUpdateStatus} disabled={saving} className="text-xs">
+                    <Send className="w-3 h-3 mr-1" /> {saving ? 'Sending…' : 'Send Update'}
+                  </Button>
+                </div>
                 {viewing.status === 'pending' && (
                   <div className="flex gap-2 pt-2 border-t border-border">
                     <Button size="sm" onClick={() => { setViewing(null); setActionTarget({ req: viewing, action: 'approved' }); setNotes(''); }}
