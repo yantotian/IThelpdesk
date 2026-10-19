@@ -3,6 +3,7 @@ import { sql } from '../db/index.js';
 import { authMiddleware, requireRole, type AuthRequest } from '../middleware/auth.js';
 import { apiLimiter } from '../middleware/rateLimit.js';
 import { autoAssignTicket } from '../jobs.js';
+import { hasCustomPage, isBuiltinRole } from '../permissions.js';
 
 const router = Router();
 router.use(apiLimiter, authMiddleware);
@@ -68,6 +69,9 @@ router.get('/', async (req: AuthRequest, res) => {
     } else if (req.user!.role === 'technician') {
       whereClause += ` AND (t.assigned_to = $${paramIndex++} OR t.requester_id = $${paramIndex++})`;
       params.push(req.user!.id);
+      params.push(req.user!.id);
+    } else if (!isBuiltinRole(req.user!.role) && !(await hasCustomPage(req.user!.role, 'tickets'))) {
+      whereClause += ` AND t.requester_id = $${paramIndex++}`;
       params.push(req.user!.id);
     }
 
@@ -216,6 +220,20 @@ router.put('/:id', async (req: AuthRequest, res) => {
       res.status(403).json({ error: 'Access denied' });
       return;
     }
+    // Custom roles: only users whose role was granted the Tickets page may
+    // edit tickets (built-in roles keep their previous behaviour).
+    if (!isBuiltinRole(req.user!.role) && !(await hasCustomPage(req.user!.role, 'tickets'))) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    } else if (req.user!.role === 'technician') {
+      // technician can update tickets they're assigned to or requested; this
+      // matches current rules — no change.
+    } else if (req.user!.role === 'it_admin' || req.user!.role === 'sysadmin') {
+      // ok
+    } else if (!(await hasCustomPage(req.user!.role, 'tickets'))) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
 
     const setClauses: string[] = [];
     const params: unknown[] = [];
@@ -271,7 +289,8 @@ router.put('/:id/status', async (req: AuthRequest, res) => {
     const allowed =
       role === 'it_admin' || role === 'sysadmin' ||
       (role === 'technician' && isOwnOrAssigned) ||
-      (role === 'requester' && existing[0].requester_id === userId);
+      (role === 'requester' && existing[0].requester_id === userId) ||
+      (!isBuiltinRole(role) && (await hasCustomPage(role, 'tickets')));
     if (!allowed) {
       res.status(403).json({ error: 'Access denied' });
       return;

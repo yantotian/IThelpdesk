@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { sql } from '../db/index.js';
-import { authMiddleware, requireRole, type AuthRequest } from '../middleware/auth.js';
+import { authMiddleware, requireRole, requireAccess, type AuthRequest } from '../middleware/auth.js';
 import { apiLimiter } from '../middleware/rateLimit.js';
+import { hasCustomPage, isBuiltinRole } from '../permissions.js';
 
 const router = Router();
 router.use(apiLimiter, authMiddleware);
@@ -18,7 +19,7 @@ router.get('/priority-configs', async (_req, res) => {
   }
 });
 
-router.put('/priority-configs/:id', requireRole('it_admin', 'sysadmin'), async (req, res) => {
+router.put('/priority-configs/:id', requireAccess(['it_admin', 'sysadmin'], 'priorities'), async (req, res) => {
   try {
     const { id } = req.params;
     const { label, sla_hours, color } = req.body;
@@ -32,7 +33,7 @@ router.put('/priority-configs/:id', requireRole('it_admin', 'sysadmin'), async (
 
 // ── System Config ────────────────────────────────────────────────────────────
 
-router.get('/system-configs', requireRole('it_admin', 'sysadmin'), async (_req, res) => {
+router.get('/system-configs', requireAccess(['it_admin', 'sysadmin'], 'config'), async (_req, res) => {
   try {
     const configs = await sql`SELECT * FROM system_config ORDER BY key`;
     res.json(configs);
@@ -63,6 +64,9 @@ router.get('/dashboard-stats', async (req: AuthRequest, res) => {
       tickets = await sql`SELECT status, priority, sla_breached, assigned_to, requester_id FROM tickets WHERE requester_id = ${req.user!.id} LIMIT 5000`;
     } else if (req.user!.role === 'technician') {
       tickets = await sql`SELECT status, priority, sla_breached, assigned_to, requester_id FROM tickets WHERE assigned_to = ${req.user!.id} LIMIT 5000`;
+    } else if (!isBuiltinRole(req.user!.role) && !(await hasCustomPage(req.user!.role, 'tickets'))) {
+      // Custom role without the Tickets page: dashboard counts own tickets only.
+      tickets = await sql`SELECT status, priority, sla_breached, assigned_to, requester_id FROM tickets WHERE requester_id = ${req.user!.id} LIMIT 5000`;
     } else {
       tickets = await sql`SELECT status, priority, sla_breached, assigned_to, requester_id FROM tickets LIMIT 5000`;
     }
@@ -127,6 +131,9 @@ router.get('/recent-activity', async (req: AuthRequest, res) => {
     } else if (role === 'technician') {
       scope = 'WHERE (t.assigned_to = $2 OR t.requester_id = $2)';
       params.push(id);
+    } else if (!isBuiltinRole(role) && !(await hasCustomPage(role, 'tickets'))) {
+      scope = 'WHERE t.requester_id = $2';
+      params.push(id);
     }
 
     const activities = await sql.unsafe(
@@ -170,11 +177,14 @@ router.get('/search', async (req: AuthRequest, res) => {
     } else if (role === 'technician') {
       ticketScope = 'AND (assigned_to = $2 OR requester_id = $2)';
       ticketParams.push(id);
+    } else if (!isBuiltinRole(role) && !(await hasCustomPage(role, 'tickets'))) {
+      ticketScope = 'AND requester_id = $2';
+      ticketParams.push(id);
     }
 
     // User results link to /admin/users, which only admins may open — the user
     // directory stays out of everyone else's results.
-    const canSeeUsers = role === 'it_admin' || role === 'sysadmin';
+    const canSeeUsers = role === 'it_admin' || role === 'sysadmin' || await hasCustomPage(role, 'users');
 
     const [tickets, categories] = await Promise.all([
       sql.unsafe(`
@@ -217,7 +227,7 @@ router.get('/search', async (req: AuthRequest, res) => {
 
 // ── Audit Log ────────────────────────────────────────────────────────────────
 
-router.get('/audit-log', requireRole('sysadmin'), async (_req, res) => {
+router.get('/audit-log', requireAccess(['sysadmin'], 'audit'), async (_req, res) => {
   try {
     const logs = await sql`
       SELECT al.*,

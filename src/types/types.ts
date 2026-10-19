@@ -1,4 +1,12 @@
 export type UserRole = 'requester' | 'technician' | 'it_admin' | 'sysadmin';
+
+export interface Role {
+  id: string;
+  name: string;
+  permissions: string[];
+  created_at: string;
+  updated_at: string;
+}
 export type TicketStatus = 'new' | 'assigned' | 'in_progress' | 'resolved' | 'on_hold' | 'verified' | 'closed';
 export type TicketPriority = 'low' | 'medium' | 'high' | 'critical';
 

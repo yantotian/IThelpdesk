@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { sql } from '../db/index.js';
-import { authMiddleware, requireRole, type AuthRequest } from '../middleware/auth.js';
+import { authMiddleware, requireAccess, type AuthRequest } from '../middleware/auth.js';
 import { apiLimiter } from '../middleware/rateLimit.js';
+import { hasCustomPage } from '../permissions.js';
 
 const router = Router();
 router.use(apiLimiter, authMiddleware);
@@ -15,7 +16,10 @@ router.get('/', async (req: AuthRequest, res) => {
     const offset = page * limit;
 
     let requests;
-    if (['it_admin', 'sysadmin'].includes(req.user!.role)) {
+    // Admins and custom roles granted the ID Requests page see everything;
+    // everyone else sees only their own requests.
+    if (['it_admin', 'sysadmin'].includes(req.user!.role) ||
+        await hasCustomPage(req.user!.role, 'id-requests')) {
       requests = await sql.unsafe(`
         SELECT ir.*,
           json_build_object('id', p.id, 'full_name', p.full_name, 'username', p.username, 'office', p.office) as requester
@@ -99,7 +103,7 @@ router.post('/', async (req: AuthRequest, res) => {
 });
 
 // Update ID request status and note for the requester (admin only)
-router.put('/:id/status', requireRole('it_admin', 'sysadmin'), async (req, res) => {
+router.put('/:id/status', requireAccess(['it_admin', 'sysadmin'], 'id-requests'), async (req, res) => {
   try {
     const { id } = req.params;
     const { status, notes } = req.body;
@@ -135,7 +139,7 @@ router.put('/:id/status', requireRole('it_admin', 'sysadmin'), async (req, res) 
 });
 
 // Update payment status (admin only)
-router.put('/:id/payment', requireRole('it_admin', 'sysadmin'), async (req, res) => {
+router.put('/:id/payment', requireAccess(['it_admin', 'sysadmin'], 'id-requests'), async (req, res) => {
   try {
     const { id } = req.params;
     const { is_paid } = req.body;
@@ -148,7 +152,7 @@ router.put('/:id/payment', requireRole('it_admin', 'sysadmin'), async (req, res)
 });
 
 // Get ID request count (admin only)
-router.get('/count', requireRole('it_admin', 'sysadmin'), async (_req, res) => {
+router.get('/count', requireAccess(['it_admin', 'sysadmin'], 'id-requests'), async (_req, res) => {
   try {
     const result = await sql`SELECT COUNT(*) as count FROM id_requests`;
     res.json({ count: parseInt(result[0].count) });

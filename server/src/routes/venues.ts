@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { sql } from '../db/index.js';
-import { authMiddleware, requireRole, type AuthRequest } from '../middleware/auth.js';
+import { authMiddleware, requireAccess, type AuthRequest } from '../middleware/auth.js';
 import { apiLimiter } from '../middleware/rateLimit.js';
 
 const router = Router();
@@ -36,7 +36,7 @@ router.get('/', async (req: AuthRequest, res) => {
   }
 });
 
-router.post('/', requireRole(...ADMIN_ROLES), async (req: AuthRequest, res) => {
+router.post('/', requireAccess(ADMIN_ROLES, 'venues'), async (req: AuthRequest, res) => {
   try {
     const v = req.body;
     if (!v.name || !String(v.name).trim()) {
@@ -56,7 +56,7 @@ router.post('/', requireRole(...ADMIN_ROLES), async (req: AuthRequest, res) => {
   }
 });
 
-router.put('/:id', requireRole(...ADMIN_ROLES), async (req: AuthRequest, res) => {
+router.put('/:id', requireAccess(ADMIN_ROLES, 'venues'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const v = req.body;
@@ -85,7 +85,7 @@ router.put('/:id', requireRole(...ADMIN_ROLES), async (req: AuthRequest, res) =>
   }
 });
 
-router.delete('/:id', requireRole(...ADMIN_ROLES), async (req: AuthRequest, res) => {
+router.delete('/:id', requireAccess(ADMIN_ROLES, 'venues'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     // Refuse to delete a venue that still has bookings — deactivate instead.
@@ -166,7 +166,7 @@ router.get('/bookings', async (req: AuthRequest, res) => {
 // Create a booking. Open to every signed-in role (requester, technician, admin).
 // Serialised per venue so two concurrent requests cannot both claim the same
 // slot: the transaction locks the venue row, re-checks overlap, then inserts.
-router.post('/bookings', requireRole(...REQUEST_ROLES), async (req: AuthRequest, res) => {
+router.post('/bookings', requireAccess(REQUEST_ROLES, 'venues'), async (req: AuthRequest, res) => {
   const b = req.body;
   if (
     !b.venue_id ||
@@ -304,7 +304,7 @@ router.delete('/bookings/:id', async (req: AuthRequest, res) => {
 });
 
 // Approve or reject a pending booking.
-router.put('/bookings/:id/review', requireRole(...ADMIN_ROLES), async (req: AuthRequest, res) => {
+router.put('/bookings/:id/review', requireAccess(ADMIN_ROLES, 'venue-bookings'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const { status, admin_note } = req.body;

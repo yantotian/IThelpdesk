@@ -100,27 +100,39 @@ const adminToken = admin.data?.token;
 async function purgeSmokeData(token) {
   const all = await req('/api/profiles/all', { token });
   const stale = (all.data || []).filter(
-    (u) => /^smoke(tech|req)_/.test(u.username || ''),
+    (u) => /^smoke(tech|req|role)_/.test(u.username || ''),
   );
-  if (stale.length === 0) return;
 
-  const ids = new Set(stale.map((u) => u.id));
-  for (let page = 0; page < 20; page++) {
-    const batch = await req(`/api/tickets?limit=100&page=${page}`, { token });
-    const tickets = batch.data || [];
-    if (tickets.length === 0) break;
-    for (const t of tickets) {
-      if (ids.has(t.requester_id) || ids.has(t.assigned_to)) {
-        await req(`/api/tickets/${t.id}`, { method: 'DELETE', token });
+  if (stale.length > 0) {
+    const ids = new Set(stale.map((u) => u.id));
+    for (let page = 0; page < 20; page++) {
+      const batch = await req(`/api/tickets?limit=100&page=${page}`, { token });
+      const tickets = batch.data || [];
+      if (tickets.length === 0) break;
+      for (const t of tickets) {
+        if (ids.has(t.requester_id) || ids.has(t.assigned_to)) {
+          await req(`/api/tickets/${t.id}`, { method: 'DELETE', token });
+        }
       }
+      if (tickets.length < 100) break;
     }
-    if (tickets.length < 100) break;
+
+    for (const u of stale) {
+      await req(`/api/profiles/${u.id}`, { method: 'DELETE', token });
+    }
+    console.log(`  (cleared ${stale.length} leftover smoke-test user(s))`);
   }
 
-  for (const u of stale) {
-    await req(`/api/profiles/${u.id}`, { method: 'DELETE', token });
+  // Leftovers from the custom-roles block: after the users above are gone the
+  // role deletes succeed (roles refuse deletion while still assigned).
+  const staleRoles = await req('/api/roles', { token });
+  for (const r of (staleRoles.data || []).filter(r => /^SmokeRole_/.test(r.name || ''))) {
+    await req(`/api/roles/${r.id}`, { method: 'DELETE', token });
   }
-  console.log(`  (cleared ${stale.length} leftover smoke-test user(s))`);
+  const staleCats = await req('/api/categories', { token });
+  for (const c of (staleCats.data || []).filter(c => /^SmokeCat /.test(c.name || ''))) {
+    await req(`/api/categories/${c.id}`, { method: 'DELETE', token });
+  }
 }
 
 await purgeSmokeData(adminToken);
@@ -226,6 +238,78 @@ const pendApproved = await req('/api/auth/login', {
   body: { username: pendName, password: PASSWORD },
 });
 check('approved user can log in', pendApproved.status === 200 && !!pendApproved.data?.token, `status ${pendApproved.status}`);
+
+// ── custom roles (User Role Management) ──────────────────────────────────────
+// The System Admin defines custom roles with page permissions; the server must
+// enforce them (and the roles API itself stays sysadmin-only).
+console.log('\ncustom roles');
+const rolesList = await req('/api/roles', { token: reqToken });
+check('any signed-in user can list roles (nav needs them)', rolesList.status === 200 && Array.isArray(rolesList.data), `status ${rolesList.status}`);
+
+const techCreateRole = await req('/api/roles', { method: 'POST', token: techToken, body: { name: `SmokeRole_x${uniq()}`, permissions: [] } });
+check('non-sysadmin cannot create roles', techCreateRole.status === 403, `status ${techCreateRole.status}`);
+
+const roleName = `SmokeRole_${uniq()}`;
+const rolePerms = ['tickets', 'categories'];
+const roleCreate = await req('/api/roles', { method: 'POST', token: adminToken, body: { name: roleName, permissions: rolePerms } });
+check('sysadmin can create a custom role', roleCreate.status === 201 && roleCreate.data?.name === roleName, `status ${roleCreate.status}`);
+const roleId = roleCreate.data?.id;
+
+const roleDup = await req('/api/roles', { method: 'POST', token: adminToken, body: { name: roleName, permissions: [] } });
+check('duplicate role name is refused with 409', roleDup.status === 409, `status ${roleDup.status}`);
+
+const roleBadPerm = await req('/api/roles', { method: 'POST', token: adminToken, body: { name: `SmokeRole_b${uniq()}`, permissions: ['not-a-page'] } });
+check('unknown page key is refused with 400', roleBadPerm.status === 400, `status ${roleBadPerm.status}`);
+
+const roleReserved = await req('/api/roles', { method: 'POST', token: adminToken, body: { name: 'sysadmin', permissions: [] } });
+check('built-in role names are reserved', roleReserved.status === 400, `status ${roleReserved.status}`);
+
+// A user holding the custom role: granted tickets+categories must work, everything else must 403.
+const roleNameUser = `smokerole_${uniq()}`;
+const roleUser = await req('/api/profiles', {
+  method: 'POST',
+  token: adminToken,
+  body: { username: roleNameUser, password: PASSWORD, full_name: 'Smoke Custom Role', role: roleName },
+});
+check('admin can create a user with the custom role', roleUser.status === 201, `status ${roleUser.status}`);
+
+const roleUserLogin = await req('/api/auth/login', { method: 'POST', body: { username: roleNameUser, password: PASSWORD } });
+check('custom-role user can log in', roleUserLogin.status === 200 && !!roleUserLogin.data?.token, `status ${roleUserLogin.status}`);
+const roleUserToken = roleUserLogin.data?.token;
+check('logged-in user carries the custom role name', roleUserLogin.data?.user?.role === roleName, `role ${roleUserLogin.data?.user?.role}`);
+
+const customTickets = await req('/api/tickets', { token: roleUserToken });
+check('granted page: custom role can list tickets', customTickets.status === 200, `status ${customTickets.status}`);
+
+const customCat = await req('/api/categories', { method: 'POST', token: roleUserToken, body: { name: `SmokeCat ${uniq()}` } });
+check('granted page: custom role can create a category', customCat.status === 201, `status ${customCat.status}`);
+
+const customProfiles = await req('/api/profiles', { token: roleUserToken });
+check('ungranted page: custom role cannot list users', customProfiles.status === 403, `status ${customProfiles.status}`);
+
+const customRoleCreate = await req('/api/roles', { method: 'POST', token: roleUserToken, body: { name: 'nope', permissions: [] } });
+check('role creation stays sysadmin-only for custom roles too', customRoleCreate.status === 403, `status ${customRoleCreate.status}`);
+
+// Revoking a page must take effect immediately (cache invalidation).
+const roleRevoke = await req(`/api/roles/${roleId}`, { method: 'PUT', token: adminToken, body: { name: roleName, permissions: ['tickets'] } });
+check('sysadmin can update a role', roleRevoke.status === 200 && roleRevoke.data?.permissions?.join(',') === 'tickets', `status ${roleRevoke.status}`);
+
+const customCatAfterRevoke = await req('/api/categories', { method: 'POST', token: roleUserToken, body: { name: `SmokeCat ${uniq()}` } });
+check('revoked page: category create now 403', customCatAfterRevoke.status === 403, `status ${customCatAfterRevoke.status}`);
+
+// Renaming a role must follow users.role so access is not silently lost.
+const renamedRole = `${roleName}_v2`;
+const roleRename = await req(`/api/roles/${roleId}`, { method: 'PUT', token: adminToken, body: { name: renamedRole, permissions: ['tickets'] } });
+check('sysadmin can rename a role', roleRename.status === 200 && roleRename.data?.name === renamedRole, `status ${roleRename.status}`);
+
+const renamedProfile = await req(`/api/profiles/${roleUser.data?.id}`, { token: adminToken });
+check('rename follows users.role', renamedProfile.data?.role === renamedRole, `role ${renamedProfile.data?.role}`);
+
+const customStillTickets = await req('/api/tickets', { token: roleUserToken });
+check('renamed role keeps its access (token still valid)', customStillTickets.status === 200, `status ${customStillTickets.status}`);
+
+const roleDeleteAssigned = await req(`/api/roles/${roleId}`, { method: 'DELETE', token: adminToken });
+check('deleting a role still assigned to users is refused', roleDeleteAssigned.status === 409, `status ${roleDeleteAssigned.status}`);
 
 // ── seed data ────────────────────────────────────────────────────────────────
 console.log('\nreference data');
@@ -553,6 +637,15 @@ for (const id of [requester.data?.id, foreignReg.data?.id, tech.data?.id, pendUs
 }
 const verifyGone = await req(`/api/profiles/${tech.data?.id}`, { token: adminToken });
 check('user is really gone after cleanup', verifyGone.status === 404, `status ${verifyGone.status}`);
+
+// Custom-roles leftovers: drop the custom-role user first, then the role and
+// the category it created are deletable.
+await req(`/api/profiles/${roleUser.data?.id}`, { method: 'DELETE', token: adminToken });
+const roleDeleteFinal = await req(`/api/roles/${roleId}`, { method: 'DELETE', token: adminToken });
+check('role can be deleted once its users are gone', roleDeleteFinal.status === 200, `status ${roleDeleteFinal.status}`);
+if (customCat.data?.id) await req(`/api/categories/${customCat.data.id}`, { method: 'DELETE', token: adminToken });
+const roleGone = await req(`/api/roles/${roleId}`, { method: 'DELETE', token: adminToken });
+check('deleted role is really gone', roleGone.status === 404, `status ${roleGone.status}`);
 
 // ── result ───────────────────────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(52)}`);

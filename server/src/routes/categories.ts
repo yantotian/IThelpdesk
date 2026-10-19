@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { sql } from '../db/index.js';
-import { authMiddleware, requireRole } from '../middleware/auth.js';
+import { authMiddleware, requireAccess } from '../middleware/auth.js';
 import { apiLimiter } from '../middleware/rateLimit.js';
 
 const router = Router();
@@ -20,7 +20,7 @@ router.get('/', async (_req, res) => {
 });
 
 // Create category (admin only)
-router.post('/', requireRole('it_admin', 'sysadmin'), async (req, res) => {
+router.post('/', requireAccess(['it_admin', 'sysadmin'], 'categories'), async (req, res) => {
   try {
     const { name, parent_id, sort_order } = req.body;
     if (!name) {
@@ -40,7 +40,7 @@ router.post('/', requireRole('it_admin', 'sysadmin'), async (req, res) => {
 });
 
 // Update category (admin only)
-router.put('/:id', requireRole('it_admin', 'sysadmin'), async (req, res) => {
+router.put('/:id', requireAccess(['it_admin', 'sysadmin'], 'categories'), async (req, res) => {
   try {
     const { id } = req.params;
     const { name, parent_id, is_active, sort_order } = req.body;
@@ -60,7 +60,7 @@ router.put('/:id', requireRole('it_admin', 'sysadmin'), async (req, res) => {
 });
 
 // Deactivate category (admin only)
-router.delete('/:id', requireRole('it_admin', 'sysadmin'), async (req, res) => {
+router.delete('/:id', requireAccess(['it_admin', 'sysadmin'], 'categories'), async (req, res) => {
   try {
     const { id } = req.params;
     // Null out any tickets referencing this category
@@ -74,7 +74,7 @@ router.delete('/:id', requireRole('it_admin', 'sysadmin'), async (req, res) => {
 });
 
 // Update sort orders (admin only)
-router.post('/sort', requireRole('it_admin', 'sysadmin'), async (req, res) => {
+router.post('/sort', requireAccess(['it_admin', 'sysadmin'], 'categories'), async (req, res) => {
   try {
     const { items } = req.body;
     for (const item of items) {

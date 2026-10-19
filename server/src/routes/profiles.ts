@@ -1,14 +1,25 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { sql } from '../db/index.js';
-import { authMiddleware, requireRole, type AuthRequest } from '../middleware/auth.js';
+import { authMiddleware, requireRole, requireAccess, type AuthRequest } from '../middleware/auth.js';
 import { apiLimiter } from '../middleware/rateLimit.js';
+import { hasCustomPage, isBuiltinRole } from '../permissions.js';
 
 const router = Router();
 router.use(apiLimiter, authMiddleware);
 
+// A role string is valid when it is one of the four built-in roles or an
+// existing custom role (routes/roles.ts). Anything else would leave the user
+// with a role that resolves to no access at all.
+async function roleExists(role: unknown): Promise<boolean> {
+  if (typeof role !== 'string' || !role) return false;
+  if (isBuiltinRole(role)) return true;
+  const rows = await sql`SELECT 1 FROM roles WHERE name = ${role} LIMIT 1`;
+  return rows.length > 0;
+}
+
 // Get all profiles (admin only)
-router.get('/', requireRole('it_admin', 'sysadmin'), async (req, res) => {
+router.get('/', requireAccess(['it_admin', 'sysadmin'], 'users'), async (req, res) => {
   try {
     const { role } = req.query;
     let users;
@@ -31,7 +42,7 @@ router.get('/', requireRole('it_admin', 'sysadmin'), async (req, res) => {
 });
 
 // Get all profiles including inactive (admin only)
-router.get('/all', requireRole('it_admin', 'sysadmin'), async (req, res) => {
+router.get('/all', requireAccess(['it_admin', 'sysadmin'], 'users'), async (req, res) => {
   try {
     const users = await sql`
       SELECT id, username, email, full_name, role, office, contact, is_active, is_approved, created_at, updated_at
@@ -69,8 +80,10 @@ router.put('/:id', async (req: AuthRequest, res) => {
     const { id } = req.params;
     const { full_name, office, contact, email } = req.body;
 
-    // Users can update their own profile, admins can update anyone
-    if (req.user!.id !== id && !['it_admin', 'sysadmin'].includes(req.user!.role)) {
+    // Users can update their own profile, admins (or a custom role granted
+    // the Users page) can update anyone
+    if (req.user!.id !== id && !['it_admin', 'sysadmin'].includes(req.user!.role) &&
+        !(await hasCustomPage(req.user!.role, 'users'))) {
       res.status(403).json({ error: 'Insufficient permissions' });
       return;
     }
@@ -108,7 +121,7 @@ router.put('/:id/role', requireRole('sysadmin'), async (req: AuthRequest, res) =
   try {
     const { id } = req.params;
     const { role } = req.body;
-    if (!['requester', 'technician', 'it_admin', 'sysadmin'].includes(role)) {
+    if (!(await roleExists(role))) {
       res.status(400).json({ error: 'Invalid role' });
       return;
     }
@@ -158,7 +171,7 @@ router.put('/:id/approve', requireRole('sysadmin'), async (req: AuthRequest, res
 });
 
 // Toggle active status (admin only)
-router.put('/:id/active', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, res) => {
+router.put('/:id/active', requireAccess(['it_admin', 'sysadmin'], 'users'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const { is_active } = req.body;
@@ -173,7 +186,7 @@ router.put('/:id/active', requireRole('it_admin', 'sysadmin'), async (req: AuthR
 // Admin resets another user's password (admin only).
 // Replaces the `update` action of the admin-user-manage edge function, which
 // previously could not be ported 1:1 because the UI silently dropped the field.
-router.put('/:id/password', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, res) => {
+router.put('/:id/password', requireAccess(['it_admin', 'sysadmin'], 'users'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const { password } = req.body;
@@ -204,7 +217,7 @@ router.put('/:id/password', requireRole('it_admin', 'sysadmin'), async (req: Aut
 });
 
 // Create user (admin only)
-router.post('/', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, res) => {
+router.post('/', requireAccess(['it_admin', 'sysadmin'], 'users'), async (req: AuthRequest, res) => {
   try {
     const { username, password, full_name, role, office, contact } = req.body;
     if (!username || !password) {
@@ -217,6 +230,10 @@ router.post('/', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, r
     const requestedRole = role || 'requester';
     if (requestedRole === 'sysadmin' && req.user!.role !== 'sysadmin') {
       res.status(403).json({ error: 'Only a System Admin can create another System Admin' });
+      return;
+    }
+    if (!(await roleExists(requestedRole))) {
+      res.status(400).json({ error: 'Invalid role' });
       return;
     }
 
@@ -242,7 +259,7 @@ router.post('/', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, r
 });
 
 // Delete user (admin only)
-router.delete('/:id', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, res) => {
+router.delete('/:id', requireAccess(['it_admin', 'sysadmin'], 'users'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     // Prevent deleting self

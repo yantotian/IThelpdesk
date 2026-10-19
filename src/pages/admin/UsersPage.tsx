@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import MainLayout from '@/components/layouts/MainLayout';
-import { getAllProfiles, toggleProfileActive, approveProfile } from '@/lib/api';
+import { getAllProfiles, toggleProfileActive, approveProfile, getRoles, createRole, updateRole, deleteRole } from '@/lib/api';
 import { api } from '@/lib/api-client';
-import type { Profile, UserRole } from '@/types/types';
+import type { Profile, UserRole, Role } from '@/types/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS, isSysAdmin } from '@/lib/roles';
+import { PAGE_GROUPS, PAGE_LABELS } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
 import { formatUtc8DateStamp, PASSWORD_MIN_LENGTH, validatePassword } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -18,7 +19,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
-import { RefreshCw, Search, UserCheck, UserX, Pencil, Trash2, UserPlus, Eye, EyeOff, Download, Upload, ShieldCheck } from 'lucide-react';
+import { RefreshCw, Search, UserCheck, UserX, Pencil, Trash2, UserPlus, Eye, EyeOff, Download, Upload, ShieldCheck, Plus, KeyRound } from 'lucide-react';
 
 interface EditForm {
   username: string;
@@ -130,8 +131,21 @@ export default function UsersPage() {
   const csvInputRef = useRef<HTMLInputElement>(null);
   const [csvImporting, setCsvImporting] = useState(false);
 
+  // Role management (custom roles)
+  const [customRoles, setCustomRoles] = useState<Role[]>([]);
+  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+  const [roleEditTarget, setRoleEditTarget] = useState<Role | null>(null); // null = create
+  const [roleForm, setRoleForm] = useState<{ name: string; permissions: string[] }>({ name: '', permissions: [] });
+  const [roleSaving, setRoleSaving] = useState(false);
+  const [roleDeleteTarget, setRoleDeleteTarget] = useState<Role | null>(null);
+
+  const reloadRoles = () => {
+    getRoles().then(setCustomRoles).catch(() => setCustomRoles([]));
+  };
+
   const reload = async () => {
     setLoading(true);
+    reloadRoles();
     getAllProfiles().then(setProfiles).catch(() => {}).finally(() => setLoading(false));
   };
   useEffect(() => { reload(); }, []);
@@ -193,7 +207,7 @@ export default function UsersPage() {
     try {
       await api.put(`/profiles/${user.id}/role`, { role: nextRole });
       setProfiles(p => p.map(u => u.id === user.id ? { ...u, role: nextRole } : u));
-      toast.success(`Role updated to ${ROLE_LABELS[nextRole]}`);
+      toast.success(`Role updated to ${ROLE_LABELS[nextRole] ?? nextRole}`);
     } catch (e: any) { toast.error(e.message); }
     setSaving(null);
   };
@@ -295,7 +309,7 @@ export default function UsersPage() {
           username,
           password,
           full_name: row['full_name'] || username,
-          role: ROLES.includes(row['role'] as UserRole) ? row['role'] : 'requester',
+          role: (ROLES.includes(row['role'] as UserRole) || customRoles.some(cr => cr.name === row['role'])) ? row['role'] : 'requester',
           office: row['office'] || undefined,
           contact: row['contact'] || undefined,
         });
@@ -305,6 +319,48 @@ export default function UsersPage() {
     setCsvImporting(false);
     toast.success(`Import done: ${success} created, ${failed} failed`);
     reload();
+  };
+
+  // ── Role management ────────────────────────────────────────────
+  const openRoleDialog = (target: Role | null) => {
+    setRoleEditTarget(target);
+    setRoleForm(target ? { name: target.name, permissions: [...target.permissions] } : { name: '', permissions: [] });
+    setRoleDialogOpen(true);
+  };
+
+  const togglePermission = (key: string) => {
+    setRoleForm(f => ({
+      ...f,
+      permissions: f.permissions.includes(key) ? f.permissions.filter(p => p !== key) : [...f.permissions, key],
+    }));
+  };
+
+  const handleRoleSave = async () => {
+    if (!roleForm.name.trim()) { toast.error('Role name is required'); return; }
+    setRoleSaving(true);
+    try {
+      const payload = { name: roleForm.name.trim(), permissions: roleForm.permissions };
+      if (roleEditTarget) {
+        await updateRole(roleEditTarget.id, payload);
+        toast.success('Role updated');
+      } else {
+        await createRole(payload);
+        toast.success('Role created');
+      }
+      setRoleDialogOpen(false);
+      reload(); // roles + profiles: a rename must refresh the role column too
+    } catch (e: any) { toast.error(e.message); }
+    setRoleSaving(false);
+  };
+
+  const handleRoleDelete = async () => {
+    if (!roleDeleteTarget) return;
+    try {
+      await deleteRole(roleDeleteTarget.id);
+      toast.success('Role deleted');
+      setRoleDeleteTarget(null);
+      reload();
+    } catch (e: any) { toast.error(e.message); }
   };
 
   return (
@@ -360,6 +416,61 @@ export default function UsersPage() {
           ))}
         </div>
 
+        {/* Custom Role Management */}
+        <div className="border border-border bg-card p-4 rounded-sm">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="laser-line mb-1 w-14" />
+              <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">Custom Role Management</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Create custom roles and select which pages/modules they can access. Assign them to users below.
+              </p>
+            </div>
+            <Button size="sm" onClick={() => openRoleDialog(null)} className="text-xs">
+              <Plus className="w-3.5 h-3.5 mr-1.5" /> Create Role
+            </Button>
+          </div>
+          {customRoles.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-3">No custom roles yet. Click “Create Role” to define one.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-max">
+                <thead>
+                  <tr className="border-b border-border bg-muted/40">
+                    {['Role Name', 'Accessible Pages', 'Actions'].map(h => (
+                      <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground tracking-wide whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {customRoles.map(r => (
+                    <tr key={r.id} className="border-b border-border/50 hover:bg-secondary/40 transition-colors">
+                      <td className="px-3 py-2.5 whitespace-nowrap text-sm font-medium text-foreground">{r.name}</td>
+                      <td className="px-3 py-2.5 text-xs text-muted-foreground">
+                        {r.permissions.length === 0
+                          ? 'No pages (no access)'
+                          : r.permissions.map(p => PAGE_LABELS[p as keyof typeof PAGE_LABELS] || p).join(', ')}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          <Button size="sm" variant="ghost" onClick={() => openRoleDialog(r)}
+                            className="h-7 px-2 border border-border text-xs" title="Edit role">
+                            <Pencil className="w-3 h-3 mr-1" /> Edit
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setRoleDeleteTarget(r)}
+                            className="h-7 w-7 p-0 border border-border text-destructive hover:text-destructive" title="Delete role">
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
         {/* CSV format hint */}
         <p className="text-xs text-muted-foreground">
           CSV import columns: <span className="font-mono">username, password, full_name, role, office, contact</span>
@@ -411,6 +522,7 @@ export default function UsersPage() {
     </SelectTrigger>
     <SelectContent>
       {ROLES.map(r => <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>)}
+      {customRoles.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}
     </SelectContent>
   </Select>
 </td>
@@ -501,6 +613,7 @@ export default function UsersPage() {
                   <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {ROLES.map(r => <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>)}
+      {customRoles.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -581,6 +694,7 @@ export default function UsersPage() {
                   <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {ROLES.map(r => <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>)}
+      {customRoles.map(r => <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -606,6 +720,83 @@ export default function UsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Role Editor (create / edit custom role) ───────────── */}
+      <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
+        <DialogContent className="max-w-[calc(100%-2rem)] md:max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-primary" />
+              {roleEditTarget ? `Edit Role — ${roleEditTarget.name}` : 'Create Custom Role'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">
+                Role Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                value={roleForm.name}
+                onChange={e => setRoleForm(f => ({ ...f, name: e.target.value }))}
+                autoComplete="off" name="role-name"
+                className="h-9 text-sm" placeholder="e.g. Encoder"
+                maxLength={50}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Accessible Pages</Label>
+              <p className="text-[11px] text-muted-foreground">
+                Tick the pages users with this role can open. Unticked pages are hidden from the sidebar, and their APIs return 403.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2 border border-border bg-muted/30 p-3">
+                {PAGE_GROUPS.map(g => (
+                  <div key={g.title}>
+                    <div className="mono text-[9px] text-muted-foreground tracking-widest mb-2">{g.title.toUpperCase()}</div>
+                    <div className="space-y-1.5">
+                      {g.keys.map(k => (
+                        <label key={k} className="flex items-center gap-2 text-xs text-foreground/90 cursor-pointer hover:text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={roleForm.permissions.includes(k)}
+                            onChange={() => togglePermission(k)}
+                            className="w-3.5 h-3.5 accent-primary"
+                          />
+                          {PAGE_LABELS[k]}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRoleDialogOpen(false)} className="text-sm">Cancel</Button>
+            <Button onClick={handleRoleSave} disabled={roleSaving} className="text-sm">
+              {roleSaving ? 'Saving…' : roleEditTarget ? 'Save Changes' : 'Create Role'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Role Delete Confirm ───────────────────────────────── */}
+      <AlertDialog open={!!roleDeleteTarget} onOpenChange={o => { if (!o) setRoleDeleteTarget(null); }}>
+        <AlertDialogContent className="max-w-[calc(100%-2rem)] md:max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete role "{roleDeleteTarget?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Users must be reassigned to another role before this custom role can be deleted. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRoleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* ── Delete Confirm ───────────────────────────────────── */}
       <AlertDialog open={!!deleteTarget} onOpenChange={o => { if (!o) setDeleteTarget(null); }}>

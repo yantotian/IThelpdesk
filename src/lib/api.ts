@@ -1,5 +1,5 @@
 import { api } from '@/lib/api-client';
-import type { Ticket, TicketActivity, TicketAttachment, Profile, Category, PriorityConfig, SystemConfig, TicketFilters, TicketStatus, AppNotification, TicketTemplate, IDRequest } from '@/types/types';
+import type { Ticket, TicketActivity, TicketAttachment, Profile, Category, PriorityConfig, SystemConfig, TicketFilters, TicketStatus, AppNotification, TicketTemplate, IDRequest, Role } from '@/types/types';
 
 // ──────────────────────────────────────────────
 // Profiles
@@ -264,6 +264,26 @@ export async function getIDRequestCount(): Promise<number> {
   const result = await api.get<{ count: number }>('/id-requests/count');
   return result.count;
 }
+
+// ──────────────────────────────────────────────
+// Roles (custom, created by System Admin)
+// ──────────────────────────────────────────────
+export async function getRoles(): Promise<Role[]> {
+  return api.get<Role[]>('/roles');
+}
+
+export async function createRole(data: { name: string; permissions: string[] }) {
+  return api.post('/roles', data);
+}
+
+export async function updateRole(id: string, data: { name: string; permissions: string[] }) {
+  return api.put(`/roles/${id}`, data);
+}
+
+export async function deleteRole(id: string) {
+  return api.delete(`/roles/${id}`);
+}
+
 
 export async function deleteTicket(id: string) {
   return api.delete(`/tickets/${id}`);

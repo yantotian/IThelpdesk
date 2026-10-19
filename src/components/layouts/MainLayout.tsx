@@ -10,13 +10,16 @@ import {
   Settings, ScrollText, BookTemplate, ServerCog, LogOut, Wrench,
   CalendarDays, Building2, CalendarCheck,
 } from 'lucide-react';
-import type { UserRole } from '@/types/types';
+import type { UserRole, Role } from '@/types/types';
+import { getPagesForRole, type PageKey } from '@/lib/permissions';
+import { getRoles } from '@/lib/api';
 
 interface NavItem {
   to: string;
   label: string;
   icon: React.ReactNode;
   roles: UserRole[];
+  pageKey?: PageKey;
 }
 
 interface NavGroup {
@@ -28,38 +31,38 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: 'GENERAL',
     items: [
-      { to: '/dashboard', label: 'DASHBOARD', icon: <LayoutDashboard className="w-4 h-4" />, roles: ['requester', 'technician', 'it_admin', 'sysadmin'] },
-      { to: '/tickets', label: 'TICKETS', icon: <Ticket className="w-4 h-4" />, roles: ['requester', 'technician', 'it_admin', 'sysadmin'] },
-      { to: '/kanban', label: 'KANBAN', icon: <KanbanSquare className="w-4 h-4" />, roles: ['technician', 'it_admin', 'sysadmin'] },
-      { to: '/reports', label: 'REPORTS', icon: <SlidersHorizontal className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
+      { to: '/dashboard', label: 'DASHBOARD', icon: <LayoutDashboard className="w-4 h-4" />, roles: ['requester', 'technician', 'it_admin', 'sysadmin'], pageKey: 'dashboard' },
+      { to: '/tickets', label: 'TICKETS', icon: <Ticket className="w-4 h-4" />, roles: ['requester', 'technician', 'it_admin', 'sysadmin'], pageKey: 'tickets' },
+      { to: '/kanban', label: 'KANBAN', icon: <KanbanSquare className="w-4 h-4" />, roles: ['technician', 'it_admin', 'sysadmin'], pageKey: 'kanban' },
+      { to: '/reports', label: 'REPORTS', icon: <SlidersHorizontal className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'], pageKey: 'reports' },
     ],
   },
   {
     title: 'INVENTORY',
     items: [
-      { to: '/id-request', label: 'ID REQUEST', icon: <IdCard className="w-4 h-4" />, roles: ['requester', 'it_admin', 'sysadmin'] },
-      { to: '/admin/ict-inventory', label: 'ICT INVENTORY', icon: <MonitorSmartphone className="w-4 h-4" />, roles: ['requester', 'technician', 'it_admin', 'sysadmin'] },
-      { to: '/admin/ict-dashboard', label: 'ICT DASHBOARD', icon: <ServerCog className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
+      { to: '/id-request', label: 'ID REQUEST', icon: <IdCard className="w-4 h-4" />, roles: ['requester', 'it_admin', 'sysadmin'], pageKey: 'id-request' },
+      { to: '/admin/ict-inventory', label: 'ICT INVENTORY', icon: <MonitorSmartphone className="w-4 h-4" />, roles: ['requester', 'technician', 'it_admin', 'sysadmin'], pageKey: 'ict-inventory' },
+      { to: '/admin/ict-dashboard', label: 'ICT DASHBOARD', icon: <ServerCog className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'], pageKey: 'ict-dashboard' },
     ],
   },
   {
     title: 'FACILITIES',
     items: [
-      { to: '/venues', label: 'VENUE BOOKING', icon: <CalendarDays className="w-4 h-4" />, roles: ['requester', 'technician', 'it_admin', 'sysadmin'] },
-      { to: '/admin/venue-bookings', label: 'BOOKING APPROVALS', icon: <CalendarCheck className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
+      { to: '/venues', label: 'VENUE BOOKING', icon: <CalendarDays className="w-4 h-4" />, roles: ['requester', 'technician', 'it_admin', 'sysadmin'], pageKey: 'venues' },
+      { to: '/admin/venue-bookings', label: 'BOOKING APPROVALS', icon: <CalendarCheck className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'], pageKey: 'venue-bookings' },
     ],
   },
   {
     title: 'ADMINISTRATION',
     items: [
-      { to: '/admin/users', label: 'USERS', icon: <Users className="w-4 h-4" />, roles: ['sysadmin'] },
-      { to: '/admin/categories', label: 'CATEGORIES', icon: <FolderTree className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
-      { to: '/admin/priorities', label: 'PRIORITIES', icon: <SlidersHorizontal className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
-      { to: '/admin/config', label: 'SYSTEM CONFIG', icon: <Settings className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
-      { to: '/admin/audit', label: 'AUDIT LOG', icon: <ScrollText className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
-      { to: '/admin/templates', label: 'TEMPLATES', icon: <BookTemplate className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
-      { to: '/admin/id-requests', label: 'ID REQUESTS', icon: <IdCard className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
-      { to: '/admin/venues', label: 'VENUES', icon: <Building2 className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'] },
+      { to: '/admin/users', label: 'USERS', icon: <Users className="w-4 h-4" />, roles: ['sysadmin'], pageKey: 'users' },
+      { to: '/admin/categories', label: 'CATEGORIES', icon: <FolderTree className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'], pageKey: 'categories' },
+      { to: '/admin/priorities', label: 'PRIORITIES', icon: <SlidersHorizontal className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'], pageKey: 'priorities' },
+      { to: '/admin/config', label: 'SYSTEM CONFIG', icon: <Settings className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'], pageKey: 'config' },
+      { to: '/admin/audit', label: 'AUDIT LOG', icon: <ScrollText className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'], pageKey: 'audit' },
+      { to: '/admin/templates', label: 'TEMPLATES', icon: <BookTemplate className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'], pageKey: 'templates' },
+      { to: '/admin/id-requests', label: 'ID REQUESTS', icon: <IdCard className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'], pageKey: 'id-requests' },
+      { to: '/admin/venues', label: 'VENUES', icon: <Building2 className="w-4 h-4" />, roles: ['it_admin', 'sysadmin'], pageKey: 'venues' },
     ],
   },
 ];
@@ -71,10 +74,24 @@ const ROLE_LABELS: Record<UserRole, string> = {
   sysadmin: 'SYSTEM ADMIN',
 };
 
+// For custom roles, show the role name as-is (uppercase-ish)
+function roleLabel(r: UserRole | string | null | undefined): string {
+  if (!r) return '';
+  if (r === 'requester' || r === 'technician' || r === 'it_admin' || r === 'sysadmin') {
+    return ROLE_LABELS[r as UserRole];
+  }
+  return r.toUpperCase();
+}
+
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const { user, profile, role, loading, signOut } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [customRoles, setCustomRoles] = useState<Role[]>([]);
+
+  useEffect(() => {
+    getRoles().then(setCustomRoles).catch(() => setCustomRoles([]));
+  }, []);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -90,9 +107,15 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     );
   }
 
+  const allowedPages = getPagesForRole(role, customRoles);
   const groups = NAV_GROUPS.map(g => ({
     ...g,
-    items: g.items.filter(i => role && i.roles.includes(role)),
+    items: g.items.filter(i => {
+      if (!role) return false;
+      if (i.roles.includes(role)) return true;
+      if (i.pageKey && allowedPages.includes(i.pageKey as PageKey)) return true;
+      return false;
+    }),
   })).filter(g => g.items.length > 0);
 
   const handleSignOut = async () => {
@@ -150,7 +173,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           </div>
           <div className="flex-1 min-w-0">
             <div className="mono text-xs text-foreground truncate">{profile?.full_name || profile?.username}</div>
-            <div className="mono text-[9px] text-muted-foreground truncate">{role ? ROLE_LABELS[role] : ''}</div>
+            <div className="mono text-[9px] text-muted-foreground truncate">{role ? roleLabel(role) : ''}</div>
           </div>
           <button
             onClick={handleSignOut}

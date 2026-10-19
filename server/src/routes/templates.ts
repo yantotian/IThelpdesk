@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { sql } from '../db/index.js';
-import { authMiddleware, requireRole, type AuthRequest } from '../middleware/auth.js';
+import { authMiddleware, requireAccess, type AuthRequest } from '../middleware/auth.js';
 import { apiLimiter } from '../middleware/rateLimit.js';
 
 const router = Router();
@@ -28,7 +28,7 @@ router.get('/', async (req, res) => {
 });
 
 // Create/update template (admin only)
-router.post('/', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, res) => {
+router.post('/', requireAccess(['it_admin', 'sysadmin'], 'templates'), async (req: AuthRequest, res) => {
   try {
     const t = req.body;
     if (t.id) {
@@ -56,7 +56,7 @@ router.post('/', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, r
 });
 
 // Delete template (soft delete)
-router.delete('/:id', requireRole('it_admin', 'sysadmin'), async (req, res) => {
+router.delete('/:id', requireAccess(['it_admin', 'sysadmin'], 'templates'), async (req, res) => {
   try {
     const { id } = req.params;
     await sql`UPDATE ticket_templates SET is_active = false WHERE id = ${id}`;

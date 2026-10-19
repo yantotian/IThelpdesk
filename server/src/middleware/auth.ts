@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { sql } from '../db/index.js';
 import { getJwtSecret } from '../env.js';
+import { hasCustomPage } from '../permissions.js';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -68,5 +69,29 @@ export function requireRole(...roles: string[]) {
       return;
     }
     next();
+  };
+}
+
+// Like requireRole, but a custom role (see routes/roles.ts) that was granted
+// the page also passes. Built-in roles keep the exact allowlist behaviour.
+export function requireAccess(rolesAllowed: string[], page: string) {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+    // Express 4 does not await async middleware — catch here so a DB error
+    // becomes a 500 instead of an unhandled rejection.
+    try {
+      if (rolesAllowed.includes(req.user.role) || await hasCustomPage(req.user.role, page)) {
+        next();
+        return;
+      }
+    } catch (error) {
+      console.error('requireAccess error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+      return;
+    }
+    res.status(403).json({ error: 'Insufficient permissions' });
   };
 }

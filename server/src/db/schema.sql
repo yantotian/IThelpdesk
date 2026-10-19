@@ -3,10 +3,6 @@
 
 -- Enums (idempotent: CREATE TYPE has no IF NOT EXISTS in older PostgreSQL)
 DO $$ BEGIN
-  CREATE TYPE user_role AS ENUM ('requester', 'technician', 'it_admin', 'sysadmin');
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-
-DO $$ BEGIN
   CREATE TYPE ticket_status AS ENUM ('new', 'assigned', 'in_progress', 'resolved', 'on_hold', 'verified', 'closed');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
@@ -21,13 +17,17 @@ CREATE TABLE IF NOT EXISTS users (
   email text UNIQUE NOT NULL,
   password_hash text NOT NULL,
   full_name text,
-  role user_role NOT NULL DEFAULT 'requester',
+  role text NOT NULL DEFAULT 'requester',
   office text,
   contact text,
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- role is text (not an enum) so custom roles from the roles table fit; the
+-- ALTER migrates databases created before custom roles existed (no-op after).
+ALTER TABLE users ALTER COLUMN role TYPE text;
 
 -- Self-registered accounts are created unapproved and cannot sign in until a
 -- System Admin approves them. DEFAULT true keeps every existing user approved.
@@ -196,6 +196,17 @@ DO $$ BEGIN
   ALTER TABLE id_requests ADD CONSTRAINT id_requests_id_type_check
     CHECK (id_type IS NULL OR (cardinality(id_type) > 0 AND id_type <@ ARRAY['Official ID','Office ID']));
 END $$;
+
+-- Custom user roles (managed by the System Admin on the User Management page).
+-- users.role stores the role NAME; the four built-in roles are code-defined
+-- and are not rows here. permissions lists the page keys the role may access.
+CREATE TABLE IF NOT EXISTS roles (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL UNIQUE,
+  permissions text[] NOT NULL DEFAULT '{}',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
 
 -- ICT Devices
 -- device_type and storage_type are NOT constrained here: the allowed values are

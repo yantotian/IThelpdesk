@@ -325,16 +325,18 @@ cd server && npx tsc --noEmit       # API
 ## Database schema
 
 The schema lives in `server/src/db/schema.sql` and is applied automatically on
-boot (it is idempotent, so re-running it is safe). It creates **16 tables** in
+boot (it is idempotent, so re-running it is safe). It creates **20 tables** in
 the `public` schema.
 
 ### Enums
 
 | Type | Values |
 | --- | --- |
-| `user_role` | `requester`, `technician`, `it_admin`, `sysadmin` |
 | `ticket_status` | `new`, `assigned`, `in_progress`, `resolved`, `on_hold`, `verified`, `closed` |
 | `ticket_priority` | `low`, `medium`, `high`, `critical` |
+
+`users.role` is plain text: it holds one of the four built-in role names or the
+name of a custom role from the `roles` table.
 
 ### Tables
 
@@ -597,6 +599,13 @@ Permissions are enforced on the server, not just hidden in the interface.
 | `sysadmin` | Full access, including assigning roles and reading the audit log, and managing venues and bookings. |
 
 Only a `sysadmin` can grant or change the `sysadmin` role.
+
+The System Admin can also define **custom roles** on the User Management page:
+a role name plus a set of pages (checkboxes for Dashboard, Tickets, Kanban, and
+so on). A custom role sees only its granted pages in the sidebar, and the server
+returns 403 for every other page's API. Renaming a role updates every user
+assigned to it; a role with users assigned cannot be deleted. Only a
+`sysadmin` can create, edit or delete custom roles (`/api/roles`).
 
 Uploaded files are never publicly reachable. Each file is served through a
 signed URL that expires after one hour, and the server re-checks that the person
