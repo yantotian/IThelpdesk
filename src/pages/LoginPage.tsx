@@ -74,8 +74,13 @@ if (mode === "register" && !agreed) {
           toast.error(error.message);
           return;
         }
-        toast.success("Account created");
-        navigate("/dashboard");
+        toast.success(
+          "Registration submitted — an administrator must approve your account before you can sign in.",
+        );
+        // No auto-login: back to the sign-in tab with a cleared form.
+        setForm((f) => ({ ...f, password: "" }));
+        setAgreed(false);
+        setMode("login");
       }
     } finally {
       setLoading(false);

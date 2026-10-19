@@ -11,6 +11,7 @@ export interface Profile {
   office: string | null;
   contact: string | null;
   is_active: boolean;
+  is_approved: boolean;
   created_at: string;
   updated_at: string;
 }

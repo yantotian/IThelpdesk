@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- Self-registered accounts are created unapproved and cannot sign in until a
+-- System Admin approves them. DEFAULT true keeps every existing user approved.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_approved boolean NOT NULL DEFAULT true;
+
 -- Categories
 CREATE TABLE IF NOT EXISTS categories (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

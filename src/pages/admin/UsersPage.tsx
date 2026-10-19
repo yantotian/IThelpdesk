@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import MainLayout from '@/components/layouts/MainLayout';
-import { getAllProfiles, toggleProfileActive } from '@/lib/api';
+import { getAllProfiles, toggleProfileActive, approveProfile } from '@/lib/api';
 import { api } from '@/lib/api-client';
 import type { Profile, UserRole } from '@/types/types';
 import { useAuth } from '@/contexts/AuthContext';
@@ -158,6 +158,7 @@ export default function UsersPage() {
     p.username.toLowerCase().includes(search.toLowerCase()) ||
     (p.full_name || '').toLowerCase().includes(search.toLowerCase())
   );
+  const pendingCount = profiles.filter(p => !p.is_approved).length;
 
   // ── Toggle active ──────────────────────────────────────────────
   const handleToggle = async (user: Profile) => {
@@ -166,6 +167,17 @@ export default function UsersPage() {
       await toggleProfileActive(user.id, !user.is_active);
       setProfiles(p => p.map(u => u.id === user.id ? { ...u, is_active: !u.is_active } : u));
       toast.success(user.is_active ? 'User deactivated' : 'User activated');
+    } catch (e: any) { toast.error(e.message); }
+    setSaving(null);
+  };
+
+  // ── Approve pending registration ────────────────────────────────
+  const handleApprove = async (user: Profile) => {
+    setSaving(user.id);
+    try {
+      await approveProfile(user.id);
+      setProfiles(p => p.map(u => u.id === user.id ? { ...u, is_approved: true } : u));
+      toast.success(`Registration approved — ${user.username} can now sign in`);
     } catch (e: any) { toast.error(e.message); }
     setSaving(null);
   };
@@ -303,7 +315,9 @@ export default function UsersPage() {
           <div>
             <div className="laser-line mb-2 w-20" />
             <h1 className="text-xl font-bold text-foreground">User Management</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">{profiles.length} total users</p>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {profiles.length} total users{pendingCount > 0 && ` · ${pendingCount} pending approval`}
+            </p>
           </div>
           <div className="flex items-center flex-wrap gap-2">
             <Button size="sm" variant="ghost" onClick={reload} className="border border-border text-xs">
@@ -402,15 +416,27 @@ export default function UsersPage() {
 </td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${
-                        u.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-muted text-muted-foreground'
+                        !u.is_approved
+                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                          : u.is_active
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                            : 'bg-muted text-muted-foreground'
                       }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${u.is_active ? 'bg-green-500' : 'bg-muted-foreground'}`} />
-                        {u.is_active ? 'Active' : 'Inactive'}
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          !u.is_approved ? 'bg-amber-500' : u.is_active ? 'bg-green-500' : 'bg-muted-foreground'
+                        }`} />
+                        {!u.is_approved ? 'Pending' : u.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
                     <td className="px-3 py-2.5 whitespace-nowrap text-xs text-muted-foreground">{u.created_at.slice(0, 10)}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       <div className="flex items-center gap-1">
+                        {!u.is_approved && (
+                          <Button size="sm" variant="ghost" onClick={() => handleApprove(u)} disabled={saving === u.id}
+                            className="h-7 px-2 border border-border text-xs text-green-600 hover:text-green-600" title="Approve registration">
+                            <UserCheck className="w-3 h-3" />
+                          </Button>
+                        )}
                         <Button size="sm" variant="ghost" onClick={() => openEdit(u)} disabled={saving === u.id}
                           className="h-7 w-7 p-0 border border-border" title="Edit user">
                           <Pencil className="w-3 h-3" />

@@ -11,6 +11,7 @@ export interface AuthRequest extends Request {
     full_name: string | null;
     office: string | null;
     is_active: boolean;
+    is_approved: boolean;
   };
 }
 
@@ -33,7 +34,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
   try {
     const decoded = jwt.verify(token, getJwtSecret()) as { id: string; username: string; role: string };
     const users = await sql`
-      SELECT id, username, role, full_name, office, is_active
+      SELECT id, username, role, full_name, office, is_active, is_approved
       FROM users WHERE id = ${decoded.id} LIMIT 1
     `;
     if (users.length === 0) {
@@ -43,6 +44,10 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
     const user = users[0];
     if (!user.is_active) {
       res.status(401).json({ error: 'Account is deactivated' });
+      return;
+    }
+    if (!user.is_approved) {
+      res.status(401).json({ error: 'Account pending approval' });
       return;
     }
     req.user = user as AuthRequest['user'];

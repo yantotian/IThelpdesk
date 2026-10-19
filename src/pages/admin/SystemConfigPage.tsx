@@ -114,7 +114,7 @@ export default function SystemConfigPage() {
           <div className="mono text-[10px] text-muted-foreground tracking-widest mb-3">API ENDPOINTS</div>
           <div className="space-y-1 mono text-[10px] text-muted-foreground">
             <div><span className="text-primary">GET</span>  /api/health — Health check</div>
-            <div><span className="text-primary">POST</span> /api/auth/register — User registration (JWT)</div>
+            <div><span className="text-primary">POST</span> /api/auth/register — User registration (creates a pending account, System Admin approval required)</div>
             <div><span className="text-primary">POST</span> /api/auth/login — User login</div>
             <div><span className="text-primary">GET</span>  /api/dashboard-stats — Dashboard statistics</div>
             <div className="pt-2 border-t border-border">

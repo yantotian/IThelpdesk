@@ -14,13 +14,13 @@ router.get('/', requireRole('it_admin', 'sysadmin'), async (req, res) => {
     let users;
     if (role) {
       users = await sql`
-        SELECT id, username, email, full_name, role, office, contact, is_active, created_at, updated_at
-        FROM users WHERE is_active = true AND role = ${String(role)} ORDER BY full_name
+        SELECT id, username, email, full_name, role, office, contact, is_active, is_approved, created_at, updated_at
+        FROM users WHERE is_active = true AND is_approved = true AND role = ${String(role)} ORDER BY full_name
       `;
     } else {
       users = await sql`
-        SELECT id, username, email, full_name, role, office, contact, is_active, created_at, updated_at
-        FROM users WHERE is_active = true ORDER BY full_name
+        SELECT id, username, email, full_name, role, office, contact, is_active, is_approved, created_at, updated_at
+        FROM users WHERE is_active = true AND is_approved = true ORDER BY full_name
       `;
     }
     res.json(users);
@@ -34,7 +34,7 @@ router.get('/', requireRole('it_admin', 'sysadmin'), async (req, res) => {
 router.get('/all', requireRole('it_admin', 'sysadmin'), async (req, res) => {
   try {
     const users = await sql`
-      SELECT id, username, email, full_name, role, office, contact, is_active, created_at, updated_at
+      SELECT id, username, email, full_name, role, office, contact, is_active, is_approved, created_at, updated_at
       FROM users ORDER BY created_at DESC LIMIT 500
     `;
     res.json(users);
@@ -49,7 +49,7 @@ router.get('/:id', async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const users = await sql`
-      SELECT id, username, email, full_name, role, office, contact, is_active, created_at, updated_at
+      SELECT id, username, email, full_name, role, office, contact, is_active, is_approved, created_at, updated_at
       FROM users WHERE id = ${id} LIMIT 1
     `;
     if (users.length === 0) {
@@ -95,7 +95,7 @@ router.put('/:id', async (req: AuthRequest, res) => {
       [...values, id] as never[],
     );
 
-    const updated = await sql`SELECT id, username, email, full_name, role, office, contact, is_active, created_at, updated_at FROM users WHERE id = ${id} LIMIT 1`;
+    const updated = await sql`SELECT id, username, email, full_name, role, office, contact, is_active, is_approved, created_at, updated_at FROM users WHERE id = ${id} LIMIT 1`;
     res.json(updated[0] ?? { message: 'Profile updated' });
   } catch (error) {
     console.error('Update profile error:', error);
@@ -128,6 +128,31 @@ router.put('/:id/role', requireRole('sysadmin'), async (req: AuthRequest, res) =
     res.json({ message: 'Role updated' });
   } catch (error) {
     console.error('Update role error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Approve a pending self-registration (System Admin only)
+router.put('/:id/approve', requireRole('sysadmin'), async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const users = await sql`SELECT id, is_approved FROM users WHERE id = ${id} LIMIT 1`;
+    if (users.length === 0) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    await sql`UPDATE users SET is_approved = true, updated_at = now() WHERE id = ${id}`;
+
+    await sql`
+      INSERT INTO audit_log (actor_id, table_name, record_id, action)
+      VALUES (${req.user!.id}, 'users', ${id}, 'approve')
+    `;
+
+    const updated = await sql`SELECT id, username, email, full_name, role, office, contact, is_active, is_approved, created_at, updated_at FROM users WHERE id = ${id} LIMIT 1`;
+    res.json(updated[0]);
+  } catch (error) {
+    console.error('Approve user error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -207,7 +232,7 @@ router.post('/', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, r
     const users = await sql`
       INSERT INTO users (username, email, password_hash, full_name, role, office, contact)
       VALUES (${username.toLowerCase()}, ${email}, ${passwordHash}, ${full_name || username.toLowerCase()}, ${requestedRole}, ${office || null}, ${contact || null})
-      RETURNING id, username, email, full_name, role, office, contact, is_active
+      RETURNING id, username, email, full_name, role, office, contact, is_active, is_approved
     `;
     res.status(201).json(users[0]);
   } catch (error) {

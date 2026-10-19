@@ -185,6 +185,48 @@ const techCreate = await req('/api/profiles', {
 });
 check('technician cannot create users (privilege escalation blocked)', techCreate.status === 403, `status ${techCreate.status}`);
 
+// ── registration approval ────────────────────────────────────────────────────
+// Self-registration must NOT hand out a session: the account stays pending
+// until a System Admin approves it. Uses the smokereq_ prefix so a crashed
+// run is still cleaned by purgeSmokeData on the next one.
+console.log('\nregistration approval');
+const pendName = `smokereq_${uniq()}`;
+const pendReg = await req('/api/auth/register', {
+  method: 'POST',
+  body: { username: pendName, password: PASSWORD, full_name: 'Smoke Pending', office: 'HQ', contact: '555' },
+});
+check('register creates an account WITHOUT a token', pendReg.status === 201 && !pendReg.data?.token, `status ${pendReg.status}`);
+
+const pendAll = await req('/api/profiles/all', { token: adminToken });
+const pendUser = (pendAll.data || []).find(u => u.username === pendName);
+check('admin can see the pending account', !!pendUser);
+check('pending account is flagged unapproved', pendUser?.is_approved === false);
+
+const adminNotifs = await req('/api/notifications', { token: adminToken });
+check(
+  'admins are notified of the pending registration',
+  (adminNotifs.data || []).some(n => n.type === 'system' && (n.title || '').includes('pending approval') && n.body === pendName),
+);
+
+const pendLogin = await req('/api/auth/login', {
+  method: 'POST',
+  body: { username: pendName, password: PASSWORD },
+});
+check('pending user cannot log in (403)', pendLogin.status === 403, `status ${pendLogin.status}`);
+
+const techApprove = await req(`/api/profiles/${pendUser?.id}/approve`, { method: 'PUT', token: techToken, body: {} });
+check('technician cannot approve registrations', techApprove.status === 403, `status ${techApprove.status}`);
+
+const approveRes = await req(`/api/profiles/${pendUser?.id}/approve`, { method: 'PUT', token: adminToken, body: {} });
+check('admin can approve a registration', approveRes.status === 200, `status ${approveRes.status}`);
+check('approved account reports is_approved=true', approveRes.data?.is_approved === true);
+
+const pendApproved = await req('/api/auth/login', {
+  method: 'POST',
+  body: { username: pendName, password: PASSWORD },
+});
+check('approved user can log in', pendApproved.status === 200 && !!pendApproved.data?.token, `status ${pendApproved.status}`);
+
 // ── seed data ────────────────────────────────────────────────────────────────
 console.log('\nreference data');
 const cats = await req('/api/categories', { token: adminToken });
@@ -482,7 +524,7 @@ check(
 const delTicket = await req(`/api/tickets/${ticket.id}`, { method: 'DELETE', token: adminToken });
 check('admin can delete a ticket', delTicket.status === 200, `status ${delTicket.status}`);
 
-for (const id of [requester.data?.id, foreignReg.data?.id, tech.data?.id]) {
+for (const id of [requester.data?.id, foreignReg.data?.id, tech.data?.id, pendUser?.id]) {
   if (id) await req(`/api/profiles/${id}`, { method: 'DELETE', token: adminToken });
 }
 const verifyGone = await req(`/api/profiles/${tech.data?.id}`, { token: adminToken });

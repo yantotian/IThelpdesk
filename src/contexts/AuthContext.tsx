@@ -84,11 +84,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUpWithUsername = async (payload: RegisterPayload) => {
     try {
-      const data = await api.post<{ token: string; user: AuthUser }>('/auth/register', payload);
-      setAuthToken(data.token);
-      setUser(data.user);
-      const profileData = await api.get<Profile>(`/profiles/${data.user.id}`);
-      setProfile(profileData);
+      // Registration creates a pending account: no token is issued and nobody
+      // is signed in until a System Admin approves it.
+      await api.post('/auth/register', payload);
       return { error: null };
     } catch (error) {
       return { error: error as Error };

@@ -16,7 +16,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     }
 
     const users = await sql`
-      SELECT id, username, email, password_hash, full_name, role, office, contact, is_active
+      SELECT id, username, email, password_hash, full_name, role, office, contact, is_active, is_approved
       FROM users WHERE username = ${username.toLowerCase()} LIMIT 1
     `;
     if (users.length === 0) {
@@ -27,6 +27,10 @@ router.post('/login', loginLimiter, async (req, res) => {
     const user = users[0];
     if (!user.is_active) {
       res.status(401).json({ error: 'Account is deactivated. Contact your administrator.' });
+      return;
+    }
+    if (!user.is_approved) {
+      res.status(403).json({ error: 'Your registration is pending administrator approval. Contact your administrator.' });
       return;
     }
 
@@ -81,25 +85,27 @@ router.post('/register', loginLimiter, async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const email = `${username.toLowerCase()}@ciodesk.com`;
 
-    const users = await sql`
-      INSERT INTO users (username, email, password_hash, full_name, office, contact, role)
-      VALUES (${username.toLowerCase()}, ${email}, ${passwordHash}, ${full_name || username.toLowerCase()}, ${String(office).trim()}, ${String(contact).trim()}, 'requester')
-      RETURNING id, username, email, full_name, role, office, contact
+    await sql`
+      INSERT INTO users (username, email, password_hash, full_name, office, contact, role, is_approved)
+      VALUES (${username.toLowerCase()}, ${email}, ${passwordHash}, ${full_name || username.toLowerCase()}, ${String(office).trim()}, ${String(contact).trim()}, 'requester', false)
     `;
 
-    const user = users[0];
-    const token = generateToken({ id: user.id as string, username: user.username as string, role: user.role as string });
+    // Tell every active System Admin that an account is waiting. A failure here
+    // must not undo the registration — the admin sees the pending row in
+    // User Management anyway.
+    try {
+      await sql`
+        INSERT INTO notifications (user_id, type, title, body)
+        SELECT id, 'system', 'New registration pending approval', ${username.toLowerCase()}
+        FROM users WHERE role = 'sysadmin' AND is_active = true
+      `;
+    } catch (notifyError) {
+      console.error('Registration notification error:', notifyError);
+    }
+
+    // No token: the account cannot be used until a System Admin approves it.
     res.status(201).json({
-      token,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        full_name: user.full_name,
-        role: user.role,
-        office: user.office,
-        contact: user.contact,
-      },
+      message: 'Registration submitted. An administrator must approve your account before you can sign in.',
     });
   } catch (error) {
     console.error('Register error:', error);

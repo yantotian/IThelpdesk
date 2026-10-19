@@ -29,6 +29,10 @@ export async function toggleProfileActive(id: string, is_active: boolean) {
   return api.put(`/profiles/${id}/active`, { is_active });
 }
 
+export async function approveProfile(id: string) {
+  return api.put(`/profiles/${id}/approve`, {});
+}
+
 // ──────────────────────────────────────────────
 // Categories
 // ──────────────────────────────────────────────

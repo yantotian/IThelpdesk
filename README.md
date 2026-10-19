@@ -22,6 +22,7 @@ are all contained in this repository.
 - [Data and backups](#data-and-backups)
 - [Updating the application](#updating-the-application)
 - [Restoring from a backup](#restoring-from-a-backup)
+- [Migrating to another server](#migrating-to-another-server)
 - [Roles](#roles)
 - [Adding a form](#adding-a-form)
 - [Reference folder](#reference-folder)
@@ -214,6 +215,15 @@ drift away from the config. To force the stored password back in sync:
 # reads ADMIN_USERNAME / ADMIN_PASSWORD from server/.env
 npm --prefix server run admin:reset-password
 ```
+
+### Registration approval
+
+Self-registration (the REGISTER tab on the login page) creates the account in
+a **pending** state: no session is issued and sign-in returns `403` until a
+System Admin approves it in **Admin → User Management** (amber *Pending*
+badge → ✓ button). Active System Admins get an in-app notification for each
+pending registration. Admin-created users and CSV imports are approved
+automatically.
 
 ---
 
@@ -498,6 +508,80 @@ node scripts/smoke-test.mjs http://localhost:3001
 
 **Docker restores:** the original volume-based procedure above still applies
 unchanged if you go back to running with Docker.
+
+---
+
+## Migrating to another server
+
+The database and `server/uploads` are the only state — the code on the new
+server is just a fresh clone. The move is dump → copy → restore.
+
+**1. Export on the old server.** Stop the API first (close the dev window, or
+kill the processes on ports 3001/5173) so nothing is written between the
+database dump and the file archive:
+
+```powershell
+.\scripts\backup.ps1           # -> backups\helpdesk-<timestamp>.dump + uploads-<timestamp>.zip
+```
+
+**2. Copy both files** into the new server's `backups\` folder (`scp`, USB,
+whatever is convenient). Never commit them — `backups\` is gitignored because
+the dump contains every user, password hash and audit row.
+
+**3. Prepare the new server** as described in
+[Running without Docker](#running-without-docker):
+
+```bash
+npm ci && npm --prefix server ci
+createdb helpdesk              # Windows: createdb -U postgres helpdesk
+```
+
+Copy `server/.env` across and adjust `DATABASE_URL` (plus `JWT_SECRET` and a
+production `ADMIN_PASSWORD` if the environment changes). The admin account
+travels inside the dump, so no reseeding happens — existing passwords keep
+working.
+
+**4. Restore** — the same two commands as
+[Restoring from a backup](#restoring-from-a-backup), with their Linux
+equivalents:
+
+```powershell
+# Windows
+$env:PGPASSWORD = '<password from server\.env DATABASE_URL>'
+& 'C:\Program Files\PostgreSQL\16\bin\pg_restore.exe' -U postgres -h localhost `
+    -d helpdesk --clean --if-exists --no-owner 'backups\helpdesk-<timestamp>.dump'
+Expand-Archive 'backups\uploads-<timestamp>.zip' -DestinationPath 'server\uploads' -Force
+```
+
+```bash
+# Linux
+PGPASSWORD='<password>' pg_restore -h localhost -U postgres -d helpdesk \
+    --clean --if-exists --no-owner backups/helpdesk-<timestamp>.dump
+unzip -o backups/uploads-<timestamp>.zip -d server/uploads
+```
+
+> **Windows → Linux:** a zip made by `Compress-Archive` can carry `\` entry
+> separators, which `unzip` on Linux writes out as garbled file names. Use tar
+> instead: `tar -czf uploads.tar.gz -C server\uploads .` on Windows, then
+> `tar -xzf uploads.tar.gz -C server/uploads` on Linux.
+
+**5. Start and verify:**
+
+```powershell
+npm run server:start           # or .\scripts\dev.ps1
+node scripts/smoke-test.mjs http://localhost:3001
+```
+
+Then sign in as an existing user and open a ticket attachment — that proves
+the database *and* the files arrived.
+
+Existing sessions are invalidated (users just sign in again), and because the
+schema is re-applied idempotently on every boot, the restore works into an
+empty database or an already-started one. Keep the old server running until
+the smoke test passes, so you can re-dump if anything is missing.
+
+**Docker target:** use the volume-based commands under
+[Data and backups](#data-and-backups) instead of `pg_restore`/`Expand-Archive`.
 
 ---
 
