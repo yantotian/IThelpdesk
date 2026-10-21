@@ -140,4 +140,4 @@ if ($haveUploads) {
 $total = (Get-ChildItem $backupDir -Filter 'helpdesk-*.dump' -ErrorAction SilentlyContinue).Count
 Write-Host "  $total backup pair(s) in backups\ (keeping $Keep)"
 Write-Host ''
-Write-Host 'Restore with: see README "Restoring from a backup".' -ForegroundColor Yellow
+Write-Host 'Restore with: .\scripts\restore.ps1   (see README "Restoring from a backup").' -ForegroundColor Yellow

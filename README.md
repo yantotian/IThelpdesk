@@ -481,8 +481,19 @@ git diff HEAD@{1} -- server/src/db/schema.sql
 
 ## Restoring from a backup
 
-Stop the application first (close the dev window, or kill the processes on
-ports 3001/5173).
+**One command** (stops the app, safety-dumps the current database first,
+restores the newest backup pair, then prints the next steps):
+
+```powershell
+.\scripts\restore.ps1                                           # newest dump in backups\
+.\scripts\restore.ps1 -Dump backups\helpdesk-<timestamp>.dump   # a specific one
+```
+
+To go back to the state the restore replaced, restore its safety dump:
+`.\scripts\restore.ps1 -Dump backups\helpdesk-<timestamp>-prerestore.dump`.
+
+**Manual fallback.** Stop the application first (close the dev window, or kill
+the processes on ports 3001/5173).
 
 **Database** — pick the dump to restore (list them with `Get-ChildItem backups`):
 
@@ -543,7 +554,8 @@ production `ADMIN_PASSWORD` if the environment changes). The admin account
 travels inside the dump, so no reseeding happens — existing passwords keep
 working.
 
-**4. Restore** — the same two commands as
+**4. Restore** — on Windows, `.\scripts\restore.ps1 -Dump backups\helpdesk-<timestamp>.dump`
+does both steps below; or run the same two commands as
 [Restoring from a backup](#restoring-from-a-backup), with their Linux
 equivalents:
 
