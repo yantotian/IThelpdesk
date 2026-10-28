@@ -5,7 +5,7 @@ import { api } from '@/lib/api-client';
 import type { Profile, UserRole, Role } from '@/types/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS, isSysAdmin } from '@/lib/roles';
-import { PAGE_GROUPS, PAGE_LABELS } from '@/lib/permissions';
+import { PAGE_GROUPS, PAGE_LABELS, BUILTIN_ROLE_PAGES } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
 import { formatUtc8DateStamp, PASSWORD_MIN_LENGTH, validatePassword } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,22 @@ interface EditForm {
 }
 
 const EMPTY_EDIT: EditForm = { username: '', full_name: '', role: 'requester', office: '', contact: '', password: '' };
+
+// A role that can be managed in Custom Role Management — either a built-in
+// role (requester / technician / it_admin) or a custom role from the API.
+interface ManageableRole {
+  id: string;
+  name: string;           // display name shown in the table
+  internalName: string;   // 'requester' | 'technician' | 'it_admin' for built-ins; role name for customs
+  permissions: string[];
+  isBuiltin: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Built-in roles the System Admin may customise (edit page permissions).
+// sysadmin is excluded: it owns everything and must not be restricted.
+const CUSTOMIZABLE_BUILTINS: UserRole[] = ['requester', 'technician', 'it_admin'];
 
 // ── Password strength ───────────────────────────────────────────────────────
 function getPasswordStrength(pw: string): { score: number; label: string; color: string } {
@@ -133,11 +149,15 @@ export default function UsersPage() {
 
   // Role management (custom roles)
   const [customRoles, setCustomRoles] = useState<Role[]>([]);
+  // Customised page permissions for built-in roles (keyed by role name).
+  // Lives in local state only — built-ins are code-defined and are not rows
+  // in the roles table, so their customisations are not persisted to the API.
+  const [builtinOverrides, setBuiltinOverrides] = useState<Record<string, string[]>>({});
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
-  const [roleEditTarget, setRoleEditTarget] = useState<Role | null>(null); // null = create
+  const [roleEditTarget, setRoleEditTarget] = useState<ManageableRole | null>(null); // null = create
   const [roleForm, setRoleForm] = useState<{ name: string; permissions: string[] }>({ name: '', permissions: [] });
   const [roleSaving, setRoleSaving] = useState(false);
-  const [roleDeleteTarget, setRoleDeleteTarget] = useState<Role | null>(null);
+  const [roleDeleteTarget, setRoleDeleteTarget] = useState<ManageableRole | null>(null);
 
   const reloadRoles = () => {
     getRoles().then(setCustomRoles).catch(() => setCustomRoles([]));
@@ -173,6 +193,26 @@ export default function UsersPage() {
     (p.full_name || '').toLowerCase().includes(search.toLowerCase())
   );
   const pendingCount = profiles.filter(p => !p.is_approved).length;
+
+  // ── Combined list of manageable roles (built-ins + custom) ──────────────
+  const manageableRoles: ManageableRole[] = [
+    ...CUSTOMIZABLE_BUILTINS.map(role => ({
+      id: `builtin-${role}`,
+      name: ROLE_LABELS[role],
+      internalName: role,
+      permissions: builtinOverrides[role] ?? BUILTIN_ROLE_PAGES[role],
+      isBuiltin: true,
+    })),
+    ...customRoles.map(r => ({
+      id: r.id,
+      name: r.name,
+      internalName: r.name,
+      permissions: r.permissions,
+      isBuiltin: false,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+    })),
+  ];
 
   // ── Toggle active ──────────────────────────────────────────────
   const handleToggle = async (user: Profile) => {
@@ -322,9 +362,11 @@ export default function UsersPage() {
   };
 
   // ── Role management ────────────────────────────────────────────
-  const openRoleDialog = (target: Role | null) => {
+  const openRoleDialog = (target: ManageableRole | null) => {
     setRoleEditTarget(target);
-    setRoleForm(target ? { name: target.name, permissions: [...target.permissions] } : { name: '', permissions: [] });
+    setRoleForm(target
+      ? { name: target.name, permissions: [...target.permissions] }
+      : { name: '', permissions: [] });
     setRoleDialogOpen(true);
   };
 
@@ -339,6 +381,17 @@ export default function UsersPage() {
     if (!roleForm.name.trim()) { toast.error('Role name is required'); return; }
     setRoleSaving(true);
     try {
+      // Built-in roles: customise page permissions locally (name is fixed).
+      if (roleEditTarget?.isBuiltin) {
+        setBuiltinOverrides(prev => ({
+          ...prev,
+          [roleEditTarget.internalName]: roleForm.permissions,
+        }));
+        toast.success(`${roleEditTarget.name} page access updated`);
+        setRoleDialogOpen(false);
+        setRoleSaving(false);
+        return;
+      }
       const payload = { name: roleForm.name.trim(), permissions: roleForm.permissions };
       if (roleEditTarget) {
         await updateRole(roleEditTarget.id, payload);
@@ -355,6 +408,11 @@ export default function UsersPage() {
 
   const handleRoleDelete = async () => {
     if (!roleDeleteTarget) return;
+    if (roleDeleteTarget.isBuiltin) {
+      toast.error('Built-in roles cannot be deleted');
+      setRoleDeleteTarget(null);
+      return;
+    }
     try {
       await deleteRole(roleDeleteTarget.id);
       toast.success('Role deleted');
@@ -430,8 +488,8 @@ export default function UsersPage() {
               <Plus className="w-3.5 h-3.5 mr-1.5" /> Create Role
             </Button>
           </div>
-          {customRoles.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-3">No custom roles yet. Click “Create Role” to define one.</p>
+          {manageableRoles.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-3">No roles yet. Click “Create Role” to define one.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-max">
@@ -443,9 +501,11 @@ export default function UsersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {customRoles.map(r => (
-                    <tr key={r.id} className="border-b border-border/50 hover:bg-secondary/40 transition-colors">
-                      <td className="px-3 py-2.5 whitespace-nowrap text-sm font-medium text-foreground">{r.name}</td>
+                  {manageableRoles.map(r => (
+                    <tr key={r.id} className={`border-b border-border/50 hover:bg-secondary/40 transition-colors ${r.isBuiltin ? 'bg-muted/20' : ''}`}>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-sm font-medium text-foreground">
+                        {r.name}{r.isBuiltin && <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] text-muted-foreground/70 border border-border/50">Built-in</span>}
+                      </td>
                       <td className="px-3 py-2.5 text-xs text-muted-foreground">
                         {r.permissions.length === 0
                           ? 'No pages (no access)'
@@ -457,10 +517,12 @@ export default function UsersPage() {
                             className="h-7 px-2 border border-border text-xs" title="Edit role">
                             <Pencil className="w-3 h-3 mr-1" /> Edit
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => setRoleDeleteTarget(r)}
-                            className="h-7 w-7 p-0 border border-border text-destructive hover:text-destructive" title="Delete role">
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
+                          {!r.isBuiltin && (
+                            <Button size="sm" variant="ghost" onClick={() => setRoleDeleteTarget(r)}
+                              className="h-7 w-7 p-0 border border-border text-destructive hover:text-destructive" title="Delete role">
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -741,6 +803,7 @@ export default function UsersPage() {
                 autoComplete="off" name="role-name"
                 className="h-9 text-sm" placeholder="e.g. Encoder"
                 maxLength={50}
+                disabled={roleEditTarget?.isBuiltin}
               />
             </div>
             <div className="space-y-1.5">
