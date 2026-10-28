@@ -52,7 +52,7 @@ export async function deactivateCategory(id: string) {
 }
 
 export async function deleteCategory(id: string) {
-  return api.delete(`/categories/${id}`);
+  return api.delete(`/categories/${id}/permanent`);
 }
 
 export async function updateCategorySortOrders(items: { id: string; sort_order: number }[]) {

@@ -20,6 +20,7 @@ export default function LoginPage() {
   const [form, setForm] = useState({
     username: "",
     password: "",
+    email: "",
     full_name: "",
     office: "",
     contact: "",
@@ -58,6 +59,14 @@ if (mode === "register" && !agreed) {
           toast.error("Sim Telco Provider is required");
           return;
         }
+        if (!form.email.trim()) {
+          toast.error("Email Address is required");
+          return;
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+          toast.error("Please enter a valid email address");
+          return;
+        }
       }
       setLoading(true);
     try {
@@ -76,6 +85,7 @@ if (mode === "register" && !agreed) {
         const { error } = await signUpWithUsername({
           username: form.username,
           password: form.password,
+          email: form.email.trim(),
           full_name: form.full_name,
           role: "requester",
           office: form.office.trim(),
@@ -190,6 +200,22 @@ if (mode === "register" && !agreed) {
                     onChange={(e) => set("full_name", e.target.value)}
                     placeholder="Display name"
                     className="bg-input border-border mono text-sm"
+                  />
+                </div>
+              )}
+              {mode === "register" && (
+                <div className="space-y-1">
+                  <Label className="mono text-xs text-muted-foreground">
+                    EMAIL ADDRESS *
+                  </Label>
+                  <Input
+                    required
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => set("email", e.target.value)}
+                    placeholder="name@domain.com"
+                    className="bg-input border-border mono text-sm"
+                    autoComplete="email"
                   />
                 </div>
               )}

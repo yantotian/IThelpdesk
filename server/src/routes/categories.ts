@@ -73,6 +73,30 @@ router.delete('/:id', requireAccess(['it_admin', 'sysadmin'], 'categories'), asy
   }
 });
 
+// Permanently delete category (admin only, inactive only)
+router.delete('/:id/permanent', requireAccess(['it_admin', 'sysadmin'], 'categories'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Only allow permanent deletion of inactive categories
+    const existing = await sql`SELECT id, is_active FROM categories WHERE id = ${id} LIMIT 1`;
+    if (existing.length === 0) {
+      res.status(404).json({ error: 'Category not found' });
+      return;
+    }
+    if (existing[0].is_active) {
+      res.status(400).json({ error: 'Only inactive categories can be permanently deleted' });
+      return;
+    }
+    // Null out any tickets referencing this category (belt and suspenders)
+    await sql`UPDATE tickets SET category_id = NULL WHERE category_id = ${id}`;
+    await sql`DELETE FROM categories WHERE id = ${id}`;
+    res.json({ message: 'Category permanently deleted' });
+  } catch (error) {
+    console.error('Permanent delete category error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Update sort orders (admin only)
 router.post('/sort', requireAccess(['it_admin', 'sysadmin'], 'categories'), async (req, res) => {
   try {

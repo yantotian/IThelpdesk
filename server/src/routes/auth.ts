@@ -62,9 +62,17 @@ router.post('/login', loginLimiter, async (req, res) => {
 // Register
 router.post('/register', loginLimiter, async (req, res) => {
   try {
-    const { username, password, full_name, office, contact } = req.body;
+    const { username, password, full_name, office, contact, email } = req.body;
     if (!username || !password) {
       res.status(400).json({ error: 'Username and password are required' });
+      return;
+    }
+    if (!email || !String(email).trim()) {
+      res.status(400).json({ error: 'Email Address is required' });
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim())) {
+      res.status(400).json({ error: 'Please enter a valid email address' });
       return;
     }
     if (!office || !String(office).trim()) {
@@ -82,12 +90,18 @@ router.post('/register', loginLimiter, async (req, res) => {
       return;
     }
 
+    const emailTaken = await sql`SELECT id FROM users WHERE email = ${String(email).trim().toLowerCase()} LIMIT 1`;
+    if (emailTaken.length > 0) {
+      res.status(409).json({ error: 'Email already registered' });
+      return;
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
-    const email = `${username.toLowerCase()}@ciodesk.com`;
+    const normalizedEmail = String(email).trim().toLowerCase();
 
     await sql`
       INSERT INTO users (username, email, password_hash, full_name, office, contact, role, is_approved)
-      VALUES (${username.toLowerCase()}, ${email}, ${passwordHash}, ${full_name || username.toLowerCase()}, ${String(office).trim()}, ${String(contact).trim()}, 'requester', false)
+      VALUES (${username.toLowerCase()}, ${normalizedEmail}, ${passwordHash}, ${full_name || username.toLowerCase()}, ${String(office).trim()}, ${String(contact).trim()}, 'requester', false)
     `;
 
     // Tell every active System Admin that an account is waiting. A failure here

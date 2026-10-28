@@ -26,6 +26,7 @@ interface AuthContextType {
 interface RegisterPayload {
   username: string;
   password: string;
+  email?: string;
   full_name?: string;
   role?: UserRole;
   office?: string;

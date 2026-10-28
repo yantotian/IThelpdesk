@@ -14,6 +14,7 @@ export default function ProfilePage() {
   const { profile, refreshProfile } = useAuth();
 
   const [info, setInfo] = useState({
+    email: profile?.email || '',
     full_name: profile?.full_name || '',
     office: profile?.office || '',
     contact: profile?.contact || '',
@@ -26,9 +27,18 @@ export default function ProfilePage() {
   const handleInfoSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile) return;
+    if (!info.email.trim()) {
+      toast.error('Email Address is required');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(info.email.trim())) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
     setSavingInfo(true);
     try {
       await updateProfile(profile.id, {
+        email: info.email.trim(),
         full_name: info.full_name || null,
         office: info.office || null,
         contact: info.contact || null,
@@ -108,6 +118,18 @@ export default function ProfilePage() {
                 {ROLE_LABELS[profile?.role || ''] || profile?.role}
               </div>
             </div>
+            <div className="space-y-1 md:col-span-2">
+              <Label className="mono text-[10px] text-muted-foreground">EMAIL ADDRESS *</Label>
+              <Input
+                required
+                type="email"
+                value={info.email}
+                onChange={e => setInfo(i => ({ ...i, email: e.target.value }))}
+                placeholder="name@domain.com"
+                className="bg-input border-border mono text-sm"
+                autoComplete="email"
+              />
+            </div>
             <div className="space-y-1">
               <Label className="mono text-[10px] text-muted-foreground">FULL NAME</Label>
               <Input
@@ -127,7 +149,7 @@ export default function ProfilePage() {
               />
             </div>
             <div className="space-y-1 md:col-span-2">
-              <Label className="mono text-[10px] text-muted-foreground">CONTACT (email or phone)</Label>
+              <Label className="mono text-[10px] text-muted-foreground">CONTACT NUMBER</Label>
               <Input
                 value={info.contact}
                 onChange={e => setInfo(i => ({ ...i, contact: e.target.value }))}
