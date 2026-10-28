@@ -2,23 +2,6 @@
   "name": "ciodesk-react-admin",
   "version": "0.0.1",
   "description": "IT Helpdesk admin dashboard — React frontend + Express API",
-  "type": "module",
-  "bin": {
-    "ciodesk": "./bin/ciodesk.js"
-  },
-  "files": [
-    "bin/",
-    "dist/",
-    "server/dist/"
-  ],
-  "homepage": "https://github.com/yantotian/IThelpdesk",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/yantotian/IThelpdesk.git"
-  },
-  "bugs": {
-    "url": "https://github.com/yantotian/IThelpdesk/issues"
-  },
   "keywords": [
     "helpdesk",
     "it",
@@ -27,9 +10,26 @@
     "express",
     "cli"
   ],
-  "engines": {
-    "node": ">=22"
+  "homepage": "https://github.com/yantotian/IThelpdesk",
+  "bugs": {
+    "url": "https://github.com/yantotian/IThelpdesk/issues"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yantotian/IThelpdesk.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "postcss.config.js",
+  "bin": {
+    "ciodesk": "bin/ciodesk.js"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "server/dist/"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -84,6 +84,9 @@
   },
   "optionalDependencies": {
     "dompurify": "^3.4.16"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "overrides": {
     "braces": "file:./vendor/braces",
