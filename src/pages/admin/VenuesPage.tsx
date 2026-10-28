@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import MainLayout from '@/components/layouts/MainLayout';
+import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -35,6 +36,7 @@ interface VenueForm {
 
 export default function VenuesPage() {
   const navigate = useNavigate();
+  const { role } = useAuth();
   const [venues, setVenues] = useState<Venue[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialog, setDialog] = useState(false);
@@ -43,6 +45,18 @@ export default function VenuesPage() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Venue | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Venue management in the Administration module is restricted to IT Admins
+  // and System Admins. A Requester (or any non-admin) must not add, edit,
+  // deactivate or delete venues.
+  const isVenueAdmin = role === 'it_admin' || role === 'sysadmin';
+
+  useEffect(() => {
+    if (!isVenueAdmin) {
+      toast.error('Access denied — Venue Management is restricted to administrators.');
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isVenueAdmin, navigate]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -164,9 +178,11 @@ export default function VenuesPage() {
             >
               <RefreshCw className="w-3 h-3 mr-1" /> Refresh
             </Button>
-            <Button size="sm" onClick={openNew} className="text-xs">
-              <Plus className="w-3 h-3 mr-1" /> Add Venue
-            </Button>
+            {isVenueAdmin && (
+              <Button size="sm" onClick={openNew} className="text-xs">
+                <Plus className="w-3 h-3 mr-1" /> Add Venue
+              </Button>
+            )}
           </div>
         </div>
 
@@ -216,33 +232,37 @@ export default function VenuesPage() {
                     )}
                   </div>
                   <div className="flex gap-1 shrink-0">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => openEdit(v)}
-                      className="w-7 h-7 border border-border"
-                      title="Edit"
-                    >
-                      <Pencil className="w-3 h-3" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => toggleActive(v)}
-                      className="w-7 h-7 border border-border text-muted-foreground hover:text-foreground"
-                      title={v.is_active ? 'Deactivate' : 'Reactivate'}
-                    >
-                      {v.is_active ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => setDeleteTarget(v)}
-                      className="w-7 h-7 border border-border text-destructive hover:text-destructive"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
+                    {isVenueAdmin && (
+                      <>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => openEdit(v)}
+                          className="w-7 h-7 border border-border"
+                          title="Edit"
+                        >
+                          <Pencil className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => toggleActive(v)}
+                          className="w-7 h-7 border border-border text-muted-foreground hover:text-foreground"
+                          title={v.is_active ? 'Deactivate' : 'Reactivate'}
+                        >
+                          {v.is_active ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setDeleteTarget(v)}
+                          className="w-7 h-7 border border-border text-destructive hover:text-destructive"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>

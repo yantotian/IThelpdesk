@@ -52,24 +52,7 @@ router.get('/all', requireAccess(['it_admin', 'sysadmin'], 'users'), async (req,
   } catch (error) {
     console.error('Get all profiles error:', error);
     res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Get profile by ID
-router.get('/:id', async (req: AuthRequest, res) => {
-  try {
-    const { id } = req.params;
-    const users = await sql`
-      SELECT id, username, email, full_name, role, office, contact, is_active, is_approved, created_at, updated_at
-      FROM users WHERE id = ${id} LIMIT 1
-    `;
-    if (users.length === 0) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-    res.json(users[0]);
-  } catch (error) {
-    console.error('Get profile error:', error);
+// (generic /:id route removed here and will be added later after specific routes)
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -116,8 +99,8 @@ router.put('/:id', async (req: AuthRequest, res) => {
   }
 });
 
-// Update user role (sysadmin only)
-router.put('/:id/role', requireRole('sysadmin'), async (req: AuthRequest, res) => {
+// Update password
+router.post('/:id/password', requireAccess(['it_admin', 'sysadmin'], 'users'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const { role } = req.body;
@@ -145,6 +128,24 @@ router.put('/:id/role', requireRole('sysadmin'), async (req: AuthRequest, res) =
   }
 });
 
+// Get profile by ID (generic route – must come after all specific routes)
+router.get('/:id', async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+    const users = await sql`
+      SELECT id, username, email, full_name, role, office, contact, is_active, is_approved, created_at, updated_at
+      FROM users WHERE id = ${id} LIMIT 1
+    `;
+    if (users.length === 0) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    res.json(users[0]);
+  } catch (error) {
+    console.error('Get profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 // Approve a pending self-registration (System Admin only)
 router.put('/:id/approve', requireRole('sysadmin'), async (req: AuthRequest, res) => {
   try {

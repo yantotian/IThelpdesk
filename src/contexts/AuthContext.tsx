@@ -30,6 +30,7 @@ interface RegisterPayload {
   role?: UserRole;
   office?: string;
   contact?: string;
+  sim_telco_provider?: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);

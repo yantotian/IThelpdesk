@@ -23,6 +23,7 @@ export default function LoginPage() {
     full_name: "",
     office: "",
     contact: "",
+    sim_telco_provider: "",
   });
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -44,7 +45,17 @@ if (mode === "register" && !agreed) {
           return;
         }
         if (!form.contact.trim()) {
-          toast.error("Contact is required");
+          toast.error("Contact number is required");
+          return;
+        }
+        if (!/^[0-9]{11}$/.test(form.contact.trim())) {
+          toast.error(
+            "Contact number must be exactly 11 digits (e.g. 09123456789)",
+          );
+          return;
+        }
+        if (!form.sim_telco_provider.trim()) {
+          toast.error("Sim Telco Provider is required");
           return;
         }
       }
@@ -69,6 +80,7 @@ if (mode === "register" && !agreed) {
           role: "requester",
           office: form.office.trim(),
           contact: form.contact.trim(),
+          sim_telco_provider: form.sim_telco_provider.trim(),
         });
         if (error) {
           toast.error(error.message);
@@ -252,13 +264,33 @@ if (mode === "register" && !agreed) {
                   </div>
                   <div className="space-y-1">
                     <Label className="mono text-xs text-muted-foreground">
-                      CONTACT *
+                      CONTACT NUMBER *
                     </Label>
                     <Input
                       required
+                      type="tel"
+                      inputMode="numeric"
+                      pattern="[0-9]{11}"
+                      maxLength={11}
                       value={form.contact}
-                      onChange={(e) => set("contact", e.target.value)}
-                      placeholder="Email or phone"
+                      onChange={(e) =>
+                        set("contact", e.target.value.replace(/\D/g, ""))
+                      }
+                      placeholder="09xxxxxxxxx"
+                      className="bg-input border-border mono text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="mono text-xs text-muted-foreground">
+                      SIM TELCO PROVIDER *
+                    </Label>
+                    <Input
+                      required
+                      value={form.sim_telco_provider}
+                      onChange={(e) =>
+                        set("sim_telco_provider", e.target.value)
+                      }
+                      placeholder="e.g. Globe, Smart, DITO"
                       className="bg-input border-border mono text-sm"
                     />
                   </div>

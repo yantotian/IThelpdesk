@@ -113,6 +113,11 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
     items: g.items.filter(i => {
       if (!role) return false;
       if (i.roles.includes(role)) return true;
+      // Administration module items are strictly role-gated: a Requester (or any
+      // role not explicitly listed) must not see them, even when they hold a
+      // colliding pageKey such as 'venues' (shared between public Venue Booking
+      // /venues and admin Venue Management /admin/venues).
+      if (g.title === 'ADMINISTRATION') return false;
       if (i.pageKey && allowedPages.includes(i.pageKey as PageKey)) return true;
       return false;
     }),
