@@ -3,7 +3,7 @@ import MainLayout from '@/components/layouts/MainLayout';
 import { IDRequestStatusBadge as StatusBadge } from '@/components/common/Badges';
 import { SignedImg } from '@/components/common/SignedImg';
 import { getIDRequests, updateIDRequestStatus, updateIDRequestPayment, getSignedStorageUrl } from '@/lib/api';
-import type { IDRequest } from '@/types/types';
+import type { IDRequest, IDType } from '@/types/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,7 +28,7 @@ function exportCSV(rows: IDRequest[]) {
     headers.join(','),
     ...rows.map(r => [
       formatUtc8Date(r.created_at),
-      r.full_name, r.nickname ?? '', r.id_number, r.id_type?.join(' / ') ?? '', r.office_name, r.position, r.address,
+      r.full_name, r.nickname ?? '', r.id_number, formatIdType(r.id_type), r.office_name, r.position, r.address,
       r.emergency_name, r.emergency_contact, r.emergency_address,
       r.status, r.is_paid ? 'Yes' : 'No', r.notes ?? '',
     ].map(escape).join(',')),
@@ -38,6 +38,13 @@ function exportCSV(rows: IDRequest[]) {
   const a = document.createElement('a');
   a.href = url; a.download = `id-requests-${formatUtc8DateStamp(new Date())}.csv`;
   a.click(); URL.revokeObjectURL(url);
+}
+
+// When both checkboxes are ticked, report "Both" instead of listing both types.
+function formatIdType(idType: IDType[] | null): string {
+  if (!idType || idType.length === 0) return '—';
+  if (idType.length === 2) return 'Both';
+  return idType.join(' / ');
 }
 
 async function downloadImage(bucket: string, path: string, filename: string) {
@@ -278,7 +285,7 @@ export default function IDRequestsAdminPage() {
                 <div>
                   <div className="mono text-[10px] text-muted-foreground tracking-widest mb-2">EMPLOYEE INFORMATION</div>
                   <div className="grid grid-cols-2 gap-2">
-                    {([['Office', viewing.office_name],['Full Name', viewing.full_name],['Nickname', viewing.nickname||'—'],['ID Number', viewing.id_number],['ID Type', viewing.id_type?.join(' / ') || '—'],['Position', viewing.position],['Address', viewing.address]] as [string,string][]).map(([l,v]) => (
+                    {([['Office', viewing.office_name],['Full Name', viewing.full_name],['Nickname', viewing.nickname||'—'],['ID Number', viewing.id_number],['ID Type', formatIdType(viewing.id_type)],['Position', viewing.position],['Address', viewing.address]] as [string,string][]).map(([l,v]) => (
                       <div key={l}><span className="text-xs text-muted-foreground block">{l}</span><span className="font-medium">{v}</span></div>
                     ))}
                   </div>
