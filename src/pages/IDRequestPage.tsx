@@ -742,6 +742,12 @@ export default function IDRequestPage() {
               </div>
             ) : (
               <>
+                <div className="flex items-start gap-2 border border-yellow-300 bg-yellow-50 px-4 py-3 text-xs text-yellow-700">
+                  <CreditCard className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  <span>
+                    <span className="font-semibold">Note:</span> Payment for the printing of official IDs must be made in advance before printing can proceed.
+                  </span>
+                </div>
                 <section className="border border-border bg-card">
                   <div className="px-5 py-3 border-b border-border">
                     <span className="mono text-[10px] text-muted-foreground tracking-widest">
