@@ -52,8 +52,6 @@ router.get('/all', requireAccess(['it_admin', 'sysadmin'], 'users'), async (req,
   } catch (error) {
     console.error('Get all profiles error:', error);
     res.status(500).json({ error: 'Internal server error' });
-// (generic /:id route removed here and will be added later after specific routes)
-    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
