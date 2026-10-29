@@ -168,6 +168,7 @@ export interface IDRequest {
   office_name: string;
   full_name: string;
   nickname: string | null;
+  date_of_birth: string | null;
   id_number: string;
   position: string;
   address: string;

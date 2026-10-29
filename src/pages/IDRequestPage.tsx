@@ -32,6 +32,7 @@ interface IDForm {
   office_name: string;
   full_name: string;
   nickname: string;
+  date_of_birth: string;
   id_number: string;
   position: string;
   // Checkbox group: any combination of Official ID / Office ID.
@@ -43,6 +44,7 @@ const EMPTY_FORM: IDForm = {
   office_name: "",
   full_name: "",
   nickname: "",
+  date_of_birth: "",
   id_number: "",
   position: "",
   id_type: [],
@@ -561,6 +563,7 @@ export default function IDRequestPage() {
     const required: [string, string][] = [
       [form.office_name, "Office Name"],
       [form.full_name, "Employee's Complete Name"],
+      [form.date_of_birth, "Date of Birth"],
       [form.id_number, "ID Number"],
       [form.position, "Company Position"],
       [form.address, "Address"],
@@ -592,6 +595,7 @@ export default function IDRequestPage() {
         office_name: form.office_name,
         full_name: form.full_name,
         nickname: form.nickname,
+        date_of_birth: form.date_of_birth,
         id_number: form.id_number,
         position: form.position,
         address: form.address,
@@ -683,6 +687,7 @@ export default function IDRequestPage() {
                       ["Office", form.office_name],
                       ["Name", form.full_name],
                       ["Nickname", form.nickname || "—"],
+                      ["Date of Birth", form.date_of_birth],
                       ["ID Number", form.id_number],
                       ["ID Type", form.id_type.join(", ")],
                       ["Position", form.position],
@@ -797,6 +802,17 @@ export default function IDRequestPage() {
                         />
                       </div>
                     ))}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">
+                        Date of Birth <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        type="date"
+                        value={form.date_of_birth}
+                        onChange={(e) => setField("date_of_birth", e.target.value)}
+                        className="h-9 text-sm"
+                      />
+                    </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs font-semibold">
                         ID Type <span className="text-destructive">*</span>

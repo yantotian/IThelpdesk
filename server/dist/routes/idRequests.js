@@ -67,8 +67,8 @@ const ID_TYPES = ['Official ID', 'Office ID'];
 // Submit ID request
 router.post('/', async (req, res) => {
     try {
-        const { office_name, full_name, nickname, id_number, position, address, emergency_name, emergency_contact, emergency_address, id_type, photo_url, signature_url } = req.body;
-        if (!office_name || !full_name || !id_number || !position || !address || !emergency_name || !emergency_contact || !emergency_address) {
+        const { office_name, full_name, nickname, date_of_birth, id_number, position, address, emergency_name, emergency_contact, emergency_address, id_type, photo_url, signature_url } = req.body;
+        if (!office_name || !full_name || !date_of_birth || !id_number || !position || !address || !emergency_name || !emergency_contact || !emergency_address) {
             res.status(400).json({ error: 'All required fields must be provided' });
             return;
         }
@@ -85,8 +85,8 @@ router.post('/', async (req, res) => {
             return;
         }
         const requests = await sql `
-      INSERT INTO id_requests (requester_id, office_name, full_name, nickname, id_number, position, address, emergency_name, emergency_contact, emergency_address, id_type, photo_url, signature_url)
-      VALUES (${req.user.id}, ${office_name}, ${full_name}, ${nickname || null}, ${id_number}, ${position}, ${address}, ${emergency_name}, ${emergency_contact}, ${emergency_address}, ${id_type}, ${photo_url}, ${signature_url || null})
+      INSERT INTO id_requests (requester_id, office_name, full_name, nickname, date_of_birth, id_number, position, address, emergency_name, emergency_contact, emergency_address, id_type, photo_url, signature_url)
+      VALUES (${req.user.id}, ${office_name}, ${full_name}, ${nickname || null}, ${date_of_birth}, ${id_number}, ${position}, ${address}, ${emergency_name}, ${emergency_contact}, ${emergency_address}, ${id_type}, ${photo_url}, ${signature_url || null})
       RETURNING *
     `;
         res.status(201).json(requests[0]);

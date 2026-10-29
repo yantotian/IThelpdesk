@@ -90,7 +90,7 @@ export async function getSignedStorageUrl(_bucket: string, ref: string): Promise
 }
 
 export async function submitIDRequest(payload: {
-  office_name: string; full_name: string; nickname: string; id_number: string;
+  office_name: string; full_name: string; nickname: string; date_of_birth: string; id_number: string;
   position: string; address: string;
   emergency_name: string; emergency_contact: string; emergency_address: string;
   id_type: string[];
@@ -119,6 +119,7 @@ export async function submitIDRequest(payload: {
     office_name: payload.office_name,
     full_name: payload.full_name,
     nickname: payload.nickname || null,
+    date_of_birth: payload.date_of_birth,
     id_number: payload.id_number,
     position: payload.position,
     address: payload.address,

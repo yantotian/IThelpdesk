@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS id_requests (
   office_name text NOT NULL,
   full_name text NOT NULL,
   nickname text,
+  date_of_birth date,
   id_number text NOT NULL,
   position text NOT NULL,
   address text NOT NULL,
@@ -196,6 +197,10 @@ DO $$ BEGIN
   ALTER TABLE id_requests ADD CONSTRAINT id_requests_id_type_check
     CHECK (id_type IS NULL OR (cardinality(id_type) > 0 AND id_type <@ ARRAY['Official ID','Office ID']));
 END $$;
+
+-- Date of Birth captured on the Company ID Request form (required at submit
+-- time). Added after initial release; nullable for pre-existing rows.
+ALTER TABLE id_requests ADD COLUMN IF NOT EXISTS date_of_birth date;
 
 -- Custom user roles (managed by the System Admin on the User Management page).
 -- users.role stores the role NAME; the four built-in roles are code-defined
