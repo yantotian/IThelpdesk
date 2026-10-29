@@ -1,0 +1,16 @@
+# Site address defaults to "localhost" (internal TLS) when SITE_ADDRESS is unset.
+# For a public domain, set SITE_ADDRESS=helpdesk.example.com in .env.
+{$SITE_ADDRESS:localhost} {
+    reverse_proxy app:80
+
+    encode gzip zstd
+
+    # Defensible defaults for a self-hosted app.
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+}
