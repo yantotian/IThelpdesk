@@ -99,8 +99,8 @@ router.put('/:id', async (req: AuthRequest, res) => {
   }
 });
 
-// Update password
-router.post('/:id/password', requireAccess(['it_admin', 'sysadmin'], 'users'), async (req: AuthRequest, res) => {
+// Update a user's role
+router.put('/:id/role', requireAccess(['it_admin', 'sysadmin'], 'users'), async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
     const { role } = req.body;

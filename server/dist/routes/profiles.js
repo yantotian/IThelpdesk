@@ -95,8 +95,8 @@ router.put('/:id', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-// Update password
-router.post('/:id/password', requireAccess(['it_admin', 'sysadmin'], 'users'), async (req, res) => {
+// Update a user's role
+router.put('/:id/role', requireAccess(['it_admin', 'sysadmin'], 'users'), async (req, res) => {
     try {
         const { id } = req.params;
         const { role } = req.body;
