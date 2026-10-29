@@ -658,10 +658,11 @@ Replicate its layout when adding a feature:
 | Routing | `src/routes.tsx` |
 | Navigation | `src/components/layouts/MainLayout.tsx` (`NAV_GROUPS`, visible to all four roles) |
 
-Anyone may view the inventory; only `it_admin` and `sysadmin` may add, import,
-edit or delete records (server-enforced by `requireRole` on the `POST`, `PUT`
-and `DELETE` routes), and only `sysadmin` may add/remove Device Type and
-Storage Type choices (`requireRole` on `POST`/`DELETE /options`).
+Anyone may view the inventory, and all profiles (including Requester, Technician,
+IT Admin, and any custom profile granted the ICT Inventory page) share the same
+feature set as System Admin: they may add, import, edit and delete records and
+add/remove Device Type and Storage Type choices (server-enforced by
+`requireAccess` on the `POST`, `PUT`, `DELETE` and `/options` routes).
 
 ### Step by step
 

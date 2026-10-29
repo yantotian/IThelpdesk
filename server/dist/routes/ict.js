@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { sql } from '../db/index.js';
-import { authMiddleware, requireRole, requireAccess } from '../middleware/auth.js';
+import { authMiddleware, requireAccess } from '../middleware/auth.js';
 import { apiLimiter } from '../middleware/rateLimit.js';
 const router = Router();
 router.use(apiLimiter, authMiddleware);
@@ -127,7 +127,7 @@ async function insertDevice(data, createdBy) {
  * something.
  */
 async function notifyInventoryAdd(user, body) {
-    if (user.role !== 'requester' && user.role !== 'technician')
+    if (user.role === 'it_admin' || user.role === 'sysadmin')
         return;
     const admins = await sql `SELECT id FROM users WHERE role IN ('it_admin','sysadmin') AND is_active = true`;
     const title = `Inventory added by ${user.full_name || user.username}`;
@@ -172,7 +172,7 @@ router.get('/devices', async (req, res) => {
     }
 });
 // Every role may add — this is what replaced the Submit Inventory page.
-router.post('/devices', requireAccess(['it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
+router.post('/devices', requireAccess(['requester', 'technician', 'it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
     try {
         const opts = await loadOptionSets();
         const { data, error } = buildDevice(req.body ?? {}, opts);
@@ -190,7 +190,7 @@ router.post('/devices', requireAccess(['it_admin', 'sysadmin'], 'ict-inventory')
     }
 });
 // Bulk create from a CSV produced by the Export CSV button on the same page.
-router.post('/devices/import', requireAccess(['it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
+router.post('/devices/import', requireAccess(['requester', 'technician', 'it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
     try {
         const rows = req.body?.rows;
         if (badImportLength(rows, res))
@@ -224,8 +224,8 @@ router.post('/devices/import', requireAccess(['it_admin', 'sysadmin'], 'ict-inve
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-// Editing and deleting stays with IT Admin / System Admin.
-router.put('/devices/:id', requireAccess(['it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
+// All profiles with ICT Inventory access may add, edit and delete records.
+router.put('/devices/:id', requireAccess(['requester', 'technician', 'it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
     try {
         const { id } = req.params;
         const d = req.body;
@@ -251,7 +251,7 @@ router.put('/devices/:id', requireAccess(['it_admin', 'sysadmin'], 'ict-inventor
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-router.delete('/devices/:id', requireAccess(['it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
+router.delete('/devices/:id', requireAccess(['requester', 'technician', 'it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
     try {
         const { id } = req.params;
         await sql `DELETE FROM ict_devices WHERE id = ${id}`;
@@ -276,7 +276,7 @@ router.get('/options', async (_req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-router.post('/options', requireRole('sysadmin'), async (req, res) => {
+router.post('/options', requireAccess(['requester', 'technician', 'it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
     try {
         const option_type = asText(req.body?.option_type);
         const value = asText(req.body?.value);
@@ -324,7 +324,7 @@ router.post('/options', requireRole('sysadmin'), async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-router.delete('/options/:id', requireRole('sysadmin'), async (req, res) => {
+router.delete('/options/:id', requireAccess(['requester', 'technician', 'it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
     try {
         const { id } = req.params;
         const removed = await sql `DELETE FROM ict_inventory_options WHERE id = ${id} RETURNING *`;
@@ -419,7 +419,7 @@ async function insertInternet(data, createdBy) {
   `;
     return rows[0];
 }
-router.post('/internet', requireAccess(['it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
+router.post('/internet', requireAccess(['requester', 'technician', 'it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
     try {
         const routers = await loadRouterKeys();
         const { data, error } = buildInternet(req.body ?? {}, routers);
@@ -436,7 +436,7 @@ router.post('/internet', requireAccess(['it_admin', 'sysadmin'], 'ict-inventory'
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-router.post('/internet/import', requireAccess(['it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
+router.post('/internet/import', requireAccess(['requester', 'technician', 'it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
     try {
         const rows = req.body?.rows;
         if (badImportLength(rows, res))
@@ -470,7 +470,7 @@ router.post('/internet/import', requireAccess(['it_admin', 'sysadmin'], 'ict-inv
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-router.put('/internet/:id', requireAccess(['it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
+router.put('/internet/:id', requireAccess(['requester', 'technician', 'it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
     try {
         const { id } = req.params;
         const d = req.body;
@@ -492,7 +492,7 @@ router.put('/internet/:id', requireAccess(['it_admin', 'sysadmin'], 'ict-invento
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-router.delete('/internet/:id', requireAccess(['it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
+router.delete('/internet/:id', requireAccess(['requester', 'technician', 'it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
     try {
         const { id } = req.params;
         await sql `DELETE FROM ict_internet WHERE id = ${id}`;
@@ -521,7 +521,7 @@ router.get('/speed-tests/:internetId', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-router.post('/speed-tests', requireAccess(['it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
+router.post('/speed-tests', requireAccess(['requester', 'technician', 'it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
     try {
         const { internet_id, dl_mbps, ul_mbps, latency_ms, notes, tested_at } = req.body;
         const logs = await sql `
@@ -536,7 +536,7 @@ router.post('/speed-tests', requireAccess(['it_admin', 'sysadmin'], 'ict-invento
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-router.delete('/speed-tests/:id', requireAccess(['it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
+router.delete('/speed-tests/:id', requireAccess(['requester', 'technician', 'it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
     try {
         const { id } = req.params;
         await sql `DELETE FROM speed_test_logs WHERE id = ${id}`;
@@ -585,7 +585,7 @@ router.get('/device-links/:deviceId', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-router.post('/device-links', requireAccess(['it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
+router.post('/device-links', requireAccess(['requester', 'technician', 'it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
     try {
         const { device_id, ticket_id, note } = req.body;
         const links = await sql `
@@ -600,7 +600,7 @@ router.post('/device-links', requireAccess(['it_admin', 'sysadmin'], 'ict-invent
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-router.delete('/device-links/:id', requireAccess(['it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
+router.delete('/device-links/:id', requireAccess(['requester', 'technician', 'it_admin', 'sysadmin'], 'ict-inventory'), async (req, res) => {
     try {
         const { id } = req.params;
         await sql `DELETE FROM device_ticket_links WHERE id = ${id}`;

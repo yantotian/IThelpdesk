@@ -908,8 +908,9 @@ function ManageChoicesDialog({
 
 export default function ICTInventoryPage() {
   const { profile } = useAuth();
-  const isAdmin = profile?.role === 'it_admin' || profile?.role === 'sysadmin';
-  const isSysAdmin = profile?.role === 'sysadmin';
+  // All profiles now share the full ICT Inventory function set with System Admin.
+  const isAdmin = !!profile;
+  const isSysAdmin = !!profile;
 
   const [activeTab, setActiveTab] = useState<string>('laptop');
   const [devices, setDevices] = useState<ICTDevice[]>([]);
