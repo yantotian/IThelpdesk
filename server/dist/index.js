@@ -26,7 +26,7 @@ import fileRoutes from './routes/files.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
-const PORT = parseInt(process.env.PORT || '3001', 10);
+const PORT = parseInt(process.env.PORT || '5577', 10);
 const uploadDir = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploads'));
 app.disable('x-powered-by');
 // nginx is the only proxy in front of the API (docker/nginx.conf sets

@@ -36,7 +36,7 @@ services:
       - "${APP_PORT:-8880}:80"
     environment:
       NODE_ENV: production
-      PORT: 3001
+      PORT: 5577
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-helpdesk}
       DATABASE_WAIT_HOST: db
       DATABASE_WAIT_PORT: 5432
@@ -61,11 +61,11 @@ services:
         condition: service_healthy
     ports:
       - "5173:5173"    # Vite dev server
-      - "3001:3001"    # API with hot-reload
+      - "5577:5577"    # API with hot-reload
     environment:
       NODE_ENV: development
-      PORT: 3001
-      APP_PORT: 3001
+      PORT: 5577
+      APP_PORT: 5577
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-helpdesk}
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env before starting}
       UPLOAD_DIR: /app/uploads

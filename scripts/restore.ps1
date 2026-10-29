@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   The inverse of scripts\backup.ps1, in order:
-    1. Stop whatever runs on :3001/:5173 so nothing reads the database mid-restore.
+    1. Stop whatever runs on :5577/:5173 so nothing reads the database mid-restore.
     2. Safety-dump the CURRENT database into backups\ first, so a restore that
        turns out to be the wrong dump can be undone. Non-fatal: a broken or
        empty database must not block the restore you came here to run.
@@ -136,7 +136,7 @@ foreach ($proc in $devProcs) {
     $ErrorActionPreference = 'Stop'
 }
 if ($devProcs.Count -gt 0) { Write-Host "Stopped $($devProcs.Count) dev process tree(s)." -ForegroundColor Yellow }
-foreach ($port in 3001, 5173) {
+foreach ($port in 5577, 5173) {
     Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | ForEach-Object {
         $opid = $_.OwningProcess
         $proc = Get-Process -Id $opid -ErrorAction SilentlyContinue
@@ -150,11 +150,11 @@ foreach ($port in 3001, 5173) {
 }
 $free = $false
 for ($i = 0; $i -lt 20; $i++) {
-    $busy = @(Get-NetTCPConnection -LocalPort 3001, 5173 -State Listen -ErrorAction SilentlyContinue)
+    $busy = @(Get-NetTCPConnection -LocalPort 5577, 5173 -State Listen -ErrorAction SilentlyContinue)
     if ($busy.Count -eq 0) { $free = $true; break }
     Start-Sleep -Seconds 1
 }
-if (-not $free) { Write-Host 'ERROR: ports 3001/5173 are still in use.' -ForegroundColor Red; exit 1 }
+if (-not $free) { Write-Host 'ERROR: ports 5577/5173 are still in use.' -ForegroundColor Red; exit 1 }
 
 # -- 2. Safety dump of the current database (non-fatal by design)
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -207,5 +207,5 @@ if ($safetyDump) { Write-Host "  Undo with: .\scripts\restore.ps1 -Dump '$safety
 Write-Host ''
 Write-Host 'Next steps:' -ForegroundColor Yellow
 Write-Host '  .\scripts\dev.ps1                                  # start the app (or: npm run server:start)'
-Write-Host '  node scripts/smoke-test.mjs http://localhost:3001 # verify (must be 0 failed)'
+Write-Host '  node scripts/smoke-test.mjs http://localhost:5577 # verify (must be 0 failed)'
 Write-Host '  Existing sessions are invalidated - sign in again.'

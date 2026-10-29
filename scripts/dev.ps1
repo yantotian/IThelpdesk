@@ -4,8 +4,8 @@
 
 .DESCRIPTION
   Starts, in one terminal:
-    - the Express API    -> http://localhost:3001   (tsx watch, hot-reload)
-    - the Vite dev server -> http://localhost:5173  (proxies /api to 3001)
+    - the Express API    -> http://localhost:5577   (tsx watch, hot-reload)
+    - the Vite dev server -> http://localhost:5173  (proxies /api to 5577)
 
   Requires PostgreSQL running locally (see server/.env for DATABASE_URL).
   Ctrl+C (or closing the window) stops both processes and their children.
@@ -41,7 +41,7 @@ function Stop-Tree([System.Diagnostics.Process]$p) {
 }
 
 try {
-    Write-Host "Starting API on http://localhost:3001 ..." -ForegroundColor Cyan
+    Write-Host "Starting API on http://localhost:5577 ..." -ForegroundColor Cyan
     $procs += Start-Process -FilePath $npm -ArgumentList '--prefix', 'server', 'run', 'dev' `
         -WorkingDirectory $root -NoNewWindow -PassThru
 
@@ -51,8 +51,8 @@ try {
 
     Write-Host ""
     Write-Host "App:     http://localhost:5173" -ForegroundColor Green
-    Write-Host "API:     http://localhost:3001" -ForegroundColor Green
-    Write-Host "Health:  http://localhost:3001/api/health" -ForegroundColor Green
+    Write-Host "API:     http://localhost:5577" -ForegroundColor Green
+    Write-Host "Health:  http://localhost:5577/api/health" -ForegroundColor Green
     Write-Host ""
     Write-Host "Press Ctrl+C to stop both." -ForegroundColor Yellow
 

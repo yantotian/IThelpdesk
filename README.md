@@ -107,7 +107,7 @@ creates the first administrator automatically on first boot.
 `docker compose up -d dev` starts the API (with `tsx watch`) and the Vite dev
 server together inside one container. Open **http://localhost:5173** — edits to
 `src/` and `server/src/` are picked up automatically. The API is also reachable
-on `http://localhost:3001`.
+on `http://localhost:5577`.
 
 ### Deploying to a server
 
@@ -159,7 +159,7 @@ npm install
 npm run dev
 ```
 
-The API starts on **http://localhost:3001** and creates its own schema and seed
+The API starts on **http://localhost:5577** and creates its own schema and seed
 data on boot. No separate migration step is required.
 
 **4. Start the frontend** in a second terminal, from the project root:
@@ -169,7 +169,7 @@ npm install
 npm run dev
 ```
 
-Vite serves the app on **http://localhost:5173** and proxies `/api` to port 3001.
+Vite serves the app on **http://localhost:5173** and proxies `/api` to port 5577.
 
 **Windows shortcut:** `scripts/dev.ps1` starts both processes in one terminal
 and stops them together on Ctrl+C:
@@ -187,7 +187,7 @@ cd server && npm run build
 cd .. && npm run server:start
 ```
 
-Then open **http://localhost:3001**.
+Then open **http://localhost:5577**.
 
 ---
 
@@ -247,7 +247,7 @@ automatically.
 | --- | --- | --- |
 | `DATABASE_URL` | *(required)* | PostgreSQL connection string. |
 | `JWT_SECRET` | *(required in production)* | Signs session tokens. |
-| `PORT` | `3001` | Port the API listens on. |
+| `PORT` | `5577` | Port the API listens on. |
 | `UPLOAD_DIR` | `server/uploads` | Where uploaded files are stored. |
 | `ADMIN_USERNAME` | `admin` | First administrator's username. |
 | `ADMIN_PASSWORD` | `admin123` | First administrator's password. **Production requires ≥ 12 characters.** |
@@ -430,7 +430,7 @@ the code.
 
 ```powershell
 .\scripts\update.ps1          # dev stack (Vite + API, hot reload)
-.\scripts\update.ps1 -Prod    # built single-process app on :3001
+.\scripts\update.ps1 -Prod    # built single-process app on :5577
 ```
 
 The script refuses to run on a dirty working tree, then in order:
@@ -459,7 +459,7 @@ npm --prefix server ci         #    dependencies (API)
 npm run build                  # 4. frontend
 npm run server:build           #    API
 # 5. restart: .\scripts\dev.ps1   (or npm run server:start)
-node scripts/smoke-test.mjs http://localhost:3001
+node scripts/smoke-test.mjs http://localhost:5577
 ```
 
 Before accepting any update that touches `server/src/db/schema.sql`, inspect it:
@@ -493,7 +493,7 @@ To go back to the state the restore replaced, restore its safety dump:
 `.\scripts\restore.ps1 -Dump backups\helpdesk-<timestamp>-prerestore.dump`.
 
 **Manual fallback.** Stop the application first (close the dev window, or kill
-the processes on ports 3001/5173).
+the processes on ports 5577/5173).
 
 **Database** — pick the dump to restore (list them with `Get-ChildItem backups`):
 
@@ -516,7 +516,7 @@ Expand-Archive 'backups\uploads-<timestamp>.zip' -DestinationPath 'server\upload
 Then restart (`.\scripts\dev.ps1`) and verify:
 
 ```powershell
-node scripts/smoke-test.mjs http://localhost:3001
+node scripts/smoke-test.mjs http://localhost:5577
 ```
 
 **Docker restores:** the original volume-based procedure above still applies
@@ -530,7 +530,7 @@ The database and `server/uploads` are the only state — the code on the new
 server is just a fresh clone. The move is dump → copy → restore.
 
 **1. Export on the old server.** Stop the API first (close the dev window, or
-kill the processes on ports 3001/5173) so nothing is written between the
+kill the processes on ports 5577/5173) so nothing is written between the
 database dump and the file archive:
 
 ```powershell
@@ -583,7 +583,7 @@ unzip -o backups/uploads-<timestamp>.zip -d server/uploads
 
 ```powershell
 npm run server:start           # or .\scripts\dev.ps1
-node scripts/smoke-test.mjs http://localhost:3001
+node scripts/smoke-test.mjs http://localhost:5577
 ```
 
 Then sign in as an existing user and open a ticket attachment — that proves

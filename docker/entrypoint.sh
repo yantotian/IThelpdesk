@@ -1,9 +1,9 @@
 #!/bin/sh
 set -e
 
-# The API listens on the container-internal PORT (always 3001 by default).
+# The API listens on the container-internal PORT (always 5577 by default).
 # APP_PORT is only the public port that Compose publishes; never reuse it here.
-API_PORT="${PORT:-3001}"
+API_PORT="${PORT:-5577}"
 
 # Wait for PostgreSQL to accept connections before running migrations.
 if [ -n "$DATABASE_WAIT_HOST" ]; then
@@ -28,7 +28,7 @@ echo "[entrypoint] applying schema..."
 node /app/api/dist/db/init.js
 
 # Substitute the API port into the nginx proxy config.
-sed -i "s|proxy_pass http://127.0.0.1:3001|proxy_pass http://127.0.0.1:${API_PORT}|g" /etc/nginx/http.d/default.conf
+sed -i "s|proxy_pass http://127.0.0.1:5577|proxy_pass http://127.0.0.1:${API_PORT}|g" /etc/nginx/http.d/default.conf
 
 echo "[entrypoint] starting API on :${API_PORT}"
 node /app/api/dist/index.js &

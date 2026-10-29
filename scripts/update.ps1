@@ -11,7 +11,7 @@
        DELETE FROM, DROP COLUMN, DROP SCHEMA, DROP DATABASE) - review manually,
        then re-run with -SkipSchemaGate to accept.
     4. Fresh backup (scripts/backup.ps1) - always before anything changes.
-    5. Stop whatever runs on :3001/:5173 so installs/builds can replace files.
+    5. Stop whatever runs on :5577/:5173 so installs/builds can replace files.
     6. git pull --ff-only.
     7. npm ci (root + server), then build frontend and API.
     8. Start the stack (dev by default; -Prod for the single-process build).
@@ -110,7 +110,7 @@ try {
 
     # -- 5. Stop the running stack (before npm ci wipes node_modules)
     #  Killing only the port listener is not enough: `tsx watch` is the PARENT
-    #  of the API process, survives, respawns the child and re-grabs :3001.
+    #  of the API process, survives, respawns the child and re-grabs :5577.
     #  So kill every project dev process (tsx/vite/npm/esbuild whose command
     #  line points into this repo), then double-check the ports are free.
     $self = $PID
@@ -141,7 +141,7 @@ try {
     }
     #  Fallback: anything still listening on our ports (e.g. run from a copy of
     #  the repo elsewhere) - but never touch unrelated processes.
-    foreach ($port in 3001, 5173) {
+    foreach ($port in 5577, 5173) {
         Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | ForEach-Object {
             $opid = $_.OwningProcess
             $proc = Get-Process -Id $opid -ErrorAction SilentlyContinue
@@ -156,11 +156,11 @@ try {
     #  dying process for them.
     $free = $false
     for ($i = 0; $i -lt 20; $i++) {
-        $busy = @(Get-NetTCPConnection -LocalPort 3001, 5173 -State Listen -ErrorAction SilentlyContinue)
+        $busy = @(Get-NetTCPConnection -LocalPort 5577, 5173 -State Listen -ErrorAction SilentlyContinue)
         if ($busy.Count -eq 0) { $free = $true; break }
         Start-Sleep -Seconds 1
     }
-    if (-not $free) { Fail 'Ports 3001/5173 are still in use after stopping the dev stack.' }
+    if (-not $free) { Fail 'Ports 5577/5173 are still in use after stopping the dev stack.' }
 
     # -- 6. Pull
     Write-Host ''
@@ -198,7 +198,7 @@ try {
     $health = $false
     for ($i = 0; $i -lt 40; $i++) {
         try {
-            $r = Invoke-WebRequest -Uri 'http://localhost:3001/api/health' -UseBasicParsing -TimeoutSec 3
+            $r = Invoke-WebRequest -Uri 'http://localhost:5577/api/health' -UseBasicParsing -TimeoutSec 3
             if ($r.StatusCode -eq 200) { $health = $true; break }
         } catch { Start-Sleep -Seconds 1.5 }
     }
@@ -213,7 +213,7 @@ try {
 
     Write-Host ''
     Write-Host '=== Smoke test ===' -ForegroundColor Cyan
-    $smokeOut = & node scripts/smoke-test.mjs 'http://localhost:3001'
+    $smokeOut = & node scripts/smoke-test.mjs 'http://localhost:5577'
     $smokeExit = $LASTEXITCODE
     # Echo the captured output so a failure can be diagnosed from this log.
     $smokeOut | ForEach-Object { Write-Host $_ }
@@ -227,15 +227,15 @@ try {
         Write-Host ('=' * 64) -ForegroundColor Green
         Write-Host "UPDATE OK: $headBefore -> $headAfter  |  smoke test passed (0 failed)" -ForegroundColor Green
         if ($Prod) {
-            Write-Host 'Running: http://localhost:3001' -ForegroundColor Green
+            Write-Host 'Running: http://localhost:5577' -ForegroundColor Green
         } else {
-            Write-Host 'Running: http://localhost:5173 (API :3001)' -ForegroundColor Green
+            Write-Host 'Running: http://localhost:5173 (API :5577)' -ForegroundColor Green
         }
         Write-Host "Backup:  $latestDump"
         Write-Host ('=' * 64) -ForegroundColor Green
         Write-Host ''
         Write-Host 'Stop the stack with:' -ForegroundColor Yellow
-        Write-Host '  Get-NetTCPConnection -LocalPort 3001,5173 -State Listen | ForEach-Object { taskkill /PID $_.OwningProcess /T /F }'
+        Write-Host '  Get-NetTCPConnection -LocalPort 5577,5173 -State Listen | ForEach-Object { taskkill /PID $_.OwningProcess /T /F }'
     } else {
         Write-Host ('=' * 64) -ForegroundColor Red
         Write-Host 'UPDATE FINISHED BUT SMOKE TEST FAILED - data itself was not modified by the test.' -ForegroundColor Red

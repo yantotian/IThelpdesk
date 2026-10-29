@@ -62,7 +62,7 @@ RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh && mkdir 
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 ENV NODE_ENV=production \
-    PORT=3001 \
+    PORT=5577 \
     UPLOAD_DIR=/app/uploads
 
 EXPOSE 80
