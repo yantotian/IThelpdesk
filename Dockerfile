@@ -32,11 +32,14 @@ RUN npm run build
 FROM web AS api
 WORKDIR /app/server
 
-COPY server/package.json server/package-lock.json* ./
+COPY server/package.json server/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
 COPY server/tsconfig.json ./
 COPY server/src ./src
+# copy-assets.ts (part of `npm run build`) reads from server/scripts/ at build
+# time, so that directory must be present in the image or the build fails.
+COPY server/scripts ./scripts
 RUN npm run build
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -58,6 +61,10 @@ COPY docker/nginx.conf /etc/nginx/http.d/default.conf
 COPY docker/entrypoint.sh /app/entrypoint.sh
 # Strip CR so the script runs even when checked out with CRLF on Windows.
 RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh && mkdir -p /app/uploads
+# Drop dev-only tooling (tsc, tsx, @types/*) from the production image so the
+# runtime container only ships what the API needs at execution time. This must
+# run before npm itself is removed below.
+RUN npm prune --omit=dev
 # The runtime only executes Node; remove package-manager tooling and its CVE surface.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
@@ -70,6 +77,7 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=5 \
   CMD curl -fsS http://localhost/api/health || exit 1
 
+# entrypoint.sh starts the API and nginx itself and supervises both, so there
+# is no default command to pass through.
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["nginx", "-g", "daemon off;"]
 
