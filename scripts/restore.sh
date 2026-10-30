@@ -73,12 +73,16 @@ if [[ "$FREE" != "true" ]]; then echo "ERROR: ports 5577/5173 are still in use."
 STAMP="$(date +%Y%m%d-%H%M%S)"
 SAFETY_DUMP="$BACKUP_DIR/helpdesk-$STAMP-prerestore.dump"
 echo "Safety-dumping current database -> $SAFETY_DUMP"
-pg_dump -Fc -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$SAFETY_DUMP"
-pg_restore --list "$SAFETY_DUMP" >/dev/null
+if ! pg_dump -Fc -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$SAFETY_DUMP"; then
+  echo "WARNING: safety dump failed - restoring anyway (the database may be empty or broken)." >&2
+fi
+if [[ -f "$SAFETY_DUMP" ]]; then
+  pg_restore --list "$SAFETY_DUMP" >/dev/null 2>&1 || rm -f "$SAFETY_DUMP"
+fi
 
 # -- Pick the dump to restore (newest by default) --
 if [[ -z "$DUMP" ]]; then
-  DUMP="$(ls -1 "$BACKUP_DIR"/helpdesk-*.dump 2>/dev/null | sort -r | head -n1)"
+  DUMP="$(ls -1 "$BACKUP_DIR"/helpdesk-*.dump 2>/dev/null | sort -r | head -n1 || true)"
 fi
 if [[ -z "$DUMP" || ! -f "$DUMP" ]]; then
   echo "ERROR: no dump found in $BACKUP_DIR." >&2
@@ -103,7 +107,9 @@ fi
 
 echo "Restore complete."
 echo "  Database: $DUMP"
-[[ -f "$UPLOADS_ARCHIVE" ]] && echo "  Uploads:  $UPLOADS_ARCHIVE"
+if [[ -f "$UPLOADS_ARCHIVE" ]]; then
+  echo "  Uploads:  $UPLOADS_ARCHIVE"
+fi
 echo "Next steps:"
 echo "  bash scripts/dev.sh          # start the app (or: npm run server:start)"
 echo "  node scripts/smoke-test.mjs http://localhost:5577 # verify (must be 0 failed)"

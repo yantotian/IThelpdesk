@@ -61,7 +61,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env before starting}
       UPLOAD_DIR: /app/uploads
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env before starting}
     volumes:
       - uploads:/app/uploads
     healthcheck:

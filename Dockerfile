@@ -57,14 +57,14 @@ COPY --from=api  /app/server/package.json /app/api/package.json
 # schema.sql is read at boot to (re)apply the schema idempotently.
 COPY --from=api  /app/server/src/db/schema.sql /app/api/src/db/schema.sql
 
-COPY docker/nginx.conf /etc/nginx/http.d/default.conf
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker/entrypoint.sh /app/entrypoint.sh
 # Strip CR so the script runs even when checked out with CRLF on Windows.
 RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh && mkdir -p /app/uploads
 # Drop dev-only tooling (tsc, tsx, @types/*) from the production image so the
 # runtime container only ships what the API needs at execution time. This must
 # run before npm itself is removed below.
-RUN npm prune --omit=dev
+RUN npm prune --omit=dev --prefix /app/api
 # The runtime only executes Node; remove package-manager tooling and its CVE surface.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
