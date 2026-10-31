@@ -28,7 +28,7 @@ echo "[entrypoint] applying schema..."
 node /app/api/dist/db/init.js
 
 # Substitute the API port into the nginx proxy config.
-sed -i "s|proxy_pass http://127.0.0.1:5577|proxy_pass http://127.0.0.1:${API_PORT}|g" /etc/nginx/conf.d/default.conf
+sed -i "s|proxy_pass http://127.0.0.1:5577|proxy_pass http://127.0.0.1:${API_PORT}|g" /etc/nginx/http.d/default.conf
 
 echo "[entrypoint] starting API on :${API_PORT}"
 node /app/api/dist/index.js &

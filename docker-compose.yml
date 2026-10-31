@@ -106,7 +106,10 @@ services:
 
   # Development service: source-mounted for hot-reloading. Uses the `api` build
   # stage so both Vite and tsx dependencies are available in one container.
+  # It is intentionally opt-in so `docker compose up -d` only starts the
+  # production stack.
   dev:
+    profiles: ["dev"]
     build:
       context: .
       dockerfile: Dockerfile
@@ -141,6 +144,7 @@ services:
 
   # Mailhog for email testing and preview
   mailhog:
+    profiles: ["tools"]
     image: axllent/mailpit@sha256:94f6b70c1436defae6799d9ac7ff0eeff9540465b842026d5cdb018f1c0234ea
     restart: unless-stopped
     security_opt:
@@ -156,6 +160,7 @@ services:
 
   # PgAdmin for PostgreSQL database management
   pgadmin:
+    profiles: ["tools"]
     image: dpage/pgadmin4@sha256:8a68677a97b8c8d1427dc915672a26d2c4a04376916a68256f53d669d6171be7
     restart: unless-stopped
     security_opt:

@@ -8,9 +8,9 @@ WORKDIR /app
 
 # Only manifests first, so the dependency layer is cached independently of source.
 COPY package.json package-lock.json ./
-# `overrides` pins braces to the local vendor/braces directory, which the
-# lockfile records as a `link:` entry. It must exist before `npm ci` runs,
-# otherwise the install fails with ENOENT on the missing vendor path.
+# The frontend depends on braces via `file:./vendor/braces`, so the local vendor
+# directory must be present before `npm ci` runs; otherwise install/build fails
+# with ENOENT on the missing vendor path.
 COPY vendor ./vendor
 # Cap V8's heap so install/build peaks stay modest. On memory-constrained
 # Docker Desktop hosts (small Windows pagefile), an uncapped Node heap lets the
@@ -49,6 +49,20 @@ FROM node:22-alpine AS runtime
 WORKDIR /app
 
 RUN apk upgrade --no-cache && apk add --no-cache nginx curl
+# The Compose stack drops all Linux capabilities (`cap_drop: [ALL]`), so even
+# UID 0 cannot bypass permission checks. Keep these nginx directories owned by
+# `root` (matching the Dockerfile's `user root;` directive below) so the master
+# process can create log/pid/temp files despite those dropped capabilities.
+RUN mkdir -p /var/log/nginx /var/lib/nginx /run/nginx \
+ && mkdir -p /var/lib/nginx/tmp/client_body /var/lib/nginx/tmp/proxy_temp \
+             /var/lib/nginx/tmp/fastcgi_temp /var/lib/nginx/tmp/uwsgi_temp \
+             /var/lib/nginx/tmp/scgi_temp \
+ && chown -R root:root /var/log/nginx /var/lib/nginx /run/nginx \
+ && chmod -R 755 /var/log/nginx /var/lib/nginx /run/nginx
+# The master process is still started as root, but config reloads/worker startup
+# in this base image can otherwise run as the `nginx` account and trip over the
+# shared directories. Run nginx as root inside the container.
+RUN sed -i 's/^user [^;]*;/user root;/' /etc/nginx/nginx.conf
 
 COPY --from=web  /app/dist               /usr/share/nginx/html
 COPY --from=api  /app/server/dist        /app/api/dist
@@ -57,7 +71,7 @@ COPY --from=api  /app/server/package.json /app/api/package.json
 # schema.sql is read at boot to (re)apply the schema idempotently.
 COPY --from=api  /app/server/src/db/schema.sql /app/api/src/db/schema.sql
 
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/nginx.conf /etc/nginx/http.d/default.conf
 COPY docker/entrypoint.sh /app/entrypoint.sh
 # Strip CR so the script runs even when checked out with CRLF on Windows.
 RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh && mkdir -p /app/uploads
