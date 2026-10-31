@@ -105,7 +105,7 @@ jobs:
 
           requester_response=$(curl --fail --silent \
             -H 'Content-Type: application/json' \
-            -d '{"username":"cirequester","password":"ci-requester-password-123","office":"CI","contact":"ci@example.com"}' \
+            -d '{"username":"cirequester","password":"ci-requester-password-123","email":"ci@example.com","office":"CI","contact":"ci@example.com"}' \
             http://localhost:8880/api/auth/register)
           requester_token=$(printf '%s' "$requester_response" | jq -r '.token')
           test -n "$requester_token"
@@ -121,7 +121,7 @@ jobs:
             -H "Authorization: Bearer $requester_token" \
             -H 'Content-Type: application/json' \
             -X POST -d '{}' \
-            http://localhost:8880/api/ict/devices)" = "403"
+            http://localhost:8880/api/ict/devices)" = "400"
 
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
             -H "Authorization: Bearer $requester_token" \

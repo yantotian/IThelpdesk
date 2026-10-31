@@ -129,6 +129,29 @@ reverse proxy (Caddy, Traefik, or an existing nginx) that forwards to
 
 ---
 
+## Running on Fedora 44 (native, recommended for a server)
+
+The provided `scripts/install-fedora.sh` installs Node 22 and PostgreSQL 18, builds
+the app and sets up a `ciodeks.service` systemd unit so it starts on boot:
+
+```bash
+sudo bash scripts/install-fedora.sh
+```
+
+Edit `server/.env` (especially `ADMIN_PASSWORD`, at least 12 characters, and a real
+`JWT_SECRET`) **before** the first boot, or set the variables on the environment
+before invoking the script. Then enable start-up and follow the log with:
+
+```bash
+sudo systemctl enable --now ciodeks-fedora.service
+systemctl status ciodeks-fedora.service
+journalctl -u ciodeks-fedora.service -f
+```
+
+The app listens on port 5577 by default; open `http://<server>:5577`. A Caddy or
+nginx reverse proxy (or the included Docker/Caddy stack) can sit in front of it for
+TLS.
+
 ## Running without Docker
 
 You need **Node.js 20+** and a **PostgreSQL 14+** server.

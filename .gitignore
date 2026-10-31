@@ -1,4 +1,9 @@
 node_modules/
+dist/
+server/dist/
+*.tgz
+backups/
+uploads/
 
 .env
 .env.local

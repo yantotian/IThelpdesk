@@ -1,0 +1,21 @@
+[Unit]
+Description=Ciodesk Helpdesk (native Node.js + PostgreSQL)
+Documentation=https://github.com/yantotian/IThelpdesk
+After=network-online.target postgresql.service
+Requires=postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cioadmin
+Group=cioadmin
+WorkingDirectory=/home/cioadmin/IThelpdesk
+EnvironmentFile=/home/cioadmin/IThelpdesk/server/.env
+ExecStart=/usr/bin/node /home/cioadmin/IThelpdesk/server/dist/index.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

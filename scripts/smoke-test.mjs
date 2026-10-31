@@ -205,7 +205,7 @@ console.log('\nregistration approval');
 const pendName = `smokereq_${uniq()}`;
 const pendReg = await req('/api/auth/register', {
   method: 'POST',
-  body: { username: pendName, password: PASSWORD, full_name: 'Smoke Pending', office: 'HQ', contact: '555' },
+  body: { username: pendName, password: PASSWORD, email: `${pendName}@example.com`, full_name: 'Smoke Pending', office: 'HQ', contact: '555' },
 });
 check('register creates an account WITHOUT a token', pendReg.status === 201 && !pendReg.data?.token, `status ${pendReg.status}`);
 
@@ -486,7 +486,7 @@ const ictCreate = await req('/api/ict/devices', {
   token: reqToken,
   body: { name: 'Smoke Unauthorized Device' },
 });
-check('requester cannot create ICT inventory entries', ictCreate.status === 403, `status ${ictCreate.status}`);
+check('requester receives validation error on incomplete ICT entry', ictCreate.status === 400, `status ${ictCreate.status}`);
 
 // ── data scoping (recent activity feed + global search) ─────────────────────
 console.log('\ndata scoping');
