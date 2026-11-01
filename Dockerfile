@@ -65,6 +65,9 @@ RUN mkdir -p /var/log/nginx /var/lib/nginx /run/nginx \
 RUN sed -i 's/^user [^;]*;/user root;/' /etc/nginx/nginx.conf
 
 COPY --from=web  /app/dist               /usr/share/nginx/html
+# Also expose the built frontend to the API so its optional static-serving
+# fallback can find it inside the container (avoids "No frontend build found").
+COPY --from=web  /app/dist               /app/dist
 COPY --from=api  /app/server/dist        /app/api/dist
 COPY --from=api  /app/server/node_modules /app/api/node_modules
 COPY --from=api  /app/server/package.json /app/api/package.json
