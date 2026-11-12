@@ -119,7 +119,15 @@ router.get('/:id', async (req: AuthRequest, res) => {
 
     // Check access
     const ticket = tickets[0];
-    if (req.user!.role === 'requester' && ticket.requester_id !== req.user!.id) {
+    const { role: _r, id: _u } = req.user!;
+    let _allowed = true;
+    if (_r === 'requester') _allowed = ticket.requester_id === _u;
+    else if (_r === 'technician') _allowed = ticket.requester_id === _u || ticket.assigned_to === _u;
+    else if (!isBuiltinRole(_r)) {
+      if (await hasCustomPage(_r, 'tickets')) _allowed = true;
+      else _allowed = ticket.requester_id === _u;
+    }
+    if (!_allowed) {
       res.status(403).json({ error: 'Access denied' });
       return;
     }
@@ -154,7 +162,15 @@ router.get('/number/:ticketNumber', async (req: AuthRequest, res) => {
     // Same access rule as GET /:id — ticket numbers must not let a requester
     // read other people's tickets.
     const ticket = tickets[0];
-    if (req.user!.role === 'requester' && ticket.requester_id !== req.user!.id) {
+    const { role: _r, id: _u } = req.user!;
+    let _allowed = true;
+    if (_r === 'requester') _allowed = ticket.requester_id === _u;
+    else if (_r === 'technician') _allowed = ticket.requester_id === _u || ticket.assigned_to === _u;
+    else if (!isBuiltinRole(_r)) {
+      if (await hasCustomPage(_r, 'tickets')) _allowed = true;
+      else _allowed = ticket.requester_id === _u;
+    }
+    if (!_allowed) {
       res.status(403).json({ error: 'Access denied' });
       return;
     }
@@ -216,21 +232,16 @@ router.put('/:id', async (req: AuthRequest, res) => {
       res.status(404).json({ error: 'Ticket not found' });
       return;
     }
-    if (req.user!.role === 'requester' && existing[0].requester_id !== req.user!.id) {
+    const { role: uRole, id: uId } = req.user!;
+    if (uRole === 'requester' && existing[0].requester_id !== uId) {
       res.status(403).json({ error: 'Access denied' });
       return;
     }
-    // Custom roles: only users whose role was granted the Tickets page may
-    // edit tickets (built-in roles keep their previous behaviour).
-    if (!isBuiltinRole(req.user!.role) && !(await hasCustomPage(req.user!.role, 'tickets'))) {
+    if (uRole === 'technician' && existing[0].requester_id !== uId && existing[0].assigned_to !== uId) {
       res.status(403).json({ error: 'Access denied' });
       return;
-    } else if (req.user!.role === 'technician') {
-      // technician can update tickets they're assigned to or requested; this
-      // matches current rules — no change.
-    } else if (req.user!.role === 'it_admin' || req.user!.role === 'sysadmin') {
-      // ok
-    } else if (!(await hasCustomPage(req.user!.role, 'tickets'))) {
+    }
+    if (!isBuiltinRole(uRole) && !(await hasCustomPage(uRole, 'tickets'))) {
       res.status(403).json({ error: 'Access denied' });
       return;
     }
@@ -363,12 +374,31 @@ router.put('/:id/assign', requireRole('it_admin', 'sysadmin'), async (req: AuthR
 router.post('/bulk-assign', requireRole('it_admin', 'sysadmin'), async (req: AuthRequest, res) => {
   try {
     const { ticketIds, techId } = req.body;
+    if (!Array.isArray(ticketIds) || ticketIds.length === 0) {
+      res.status(400).json({ error: 'ticketIds must be a non-empty array' });
+      return;
+    }
+    const isUuid = typeof techId === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(techId);
+    if (!isUuid) {
+      res.status(400).json({ error: 'techId must be a valid UUID' });
+      return;
+    }
+    const techs = await sql`SELECT id FROM users WHERE id = ${techId} AND role IN ('technician', 'it_admin', 'sysadmin') AND is_active = true`;
+    if (techs.length === 0) {
+      res.status(400).json({ error: 'techId must reference an active technician or admin' });
+      return;
+    }
+
     await sql.unsafe(
       `UPDATE tickets SET assigned_to = $1, status = 'assigned' WHERE id = ANY($2) AND status = 'new'`,
       [techId, ticketIds]
     );
 
+    const existing = await sql.unsafe(`SELECT id FROM tickets WHERE id = ANY($1)`, [ticketIds]);
+    const existingIds = new Set(existing.map((r: any) => r.id));
     for (const ticketId of ticketIds) {
+      if (!existingIds.has(ticketId)) continue;
       await sql`
         INSERT INTO ticket_activities (ticket_id, actor_id, activity_type, content, new_value)
         VALUES (${ticketId}, ${req.user!.id}, 'assignment', 'Bulk assigned by admin', ${techId})
@@ -399,6 +429,17 @@ router.delete('/:id', requireRole('it_admin', 'sysadmin'), async (req, res) => {
 router.get('/:id/activities', async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
+    const tRows = await sql`SELECT requester_id, assigned_to FROM tickets WHERE id = ${id} LIMIT 1`;
+    if (tRows.length === 0) { res.status(404).json({ error: 'Ticket not found' }); return; }
+    const { role: aRole, id: aUid } = req.user!;
+    let aOk = true;
+    if (aRole === 'requester') aOk = tRows[0].requester_id === aUid;
+    else if (aRole === 'technician') aOk = tRows[0].requester_id === aUid || tRows[0].assigned_to === aUid;
+    else if (!isBuiltinRole(aRole)) {
+      if (await hasCustomPage(aRole, 'tickets')) aOk = true;
+      else aOk = tRows[0].requester_id === aUid;
+    }
+    if (!aOk) { res.status(403).json({ error: 'Access denied' }); return; }
     const activities = await sql.unsafe(`
       SELECT ta.*,
         json_build_object('id', u.id, 'username', u.username, 'full_name', u.full_name, 'role', u.role) as actor
@@ -424,6 +465,18 @@ router.post('/:id/comments', async (req: AuthRequest, res) => {
       res.status(400).json({ error: 'Content is required' });
       return;
     }
+    const tRows = await sql`SELECT requester_id, assigned_to, status FROM tickets WHERE id = ${id} LIMIT 1`;
+    if (tRows.length === 0) { res.status(404).json({ error: 'Ticket not found' }); return; }
+    const { role: cRole, id: cUid } = req.user!;
+    let cOk = true;
+    if (cRole === 'requester') cOk = tRows[0].requester_id === cUid;
+    else if (cRole === 'technician') cOk = tRows[0].requester_id === cUid || tRows[0].assigned_to === cUid;
+    else if (!isBuiltinRole(cRole)) {
+      if (await hasCustomPage(cRole, 'tickets')) cOk = true;
+      else cOk = tRows[0].requester_id === cUid;
+    }
+    if (!cOk) { res.status(403).json({ error: 'Access denied' }); return; }
+    if (tRows[0].status === 'closed') { res.status(400).json({ error: 'Cannot comment on a closed ticket' }); return; }
 
     await sql`
       INSERT INTO ticket_activities (ticket_id, actor_id, activity_type, content)
@@ -440,6 +493,17 @@ router.post('/:id/comments', async (req: AuthRequest, res) => {
 router.get('/:id/attachments', async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
+    const tRows = await sql`SELECT requester_id, assigned_to FROM tickets WHERE id = ${id} LIMIT 1`;
+    if (tRows.length === 0) { res.status(404).json({ error: 'Ticket not found' }); return; }
+    const { role: atRole, id: atUid } = req.user!;
+    let atOk = true;
+    if (atRole === 'requester') atOk = tRows[0].requester_id === atUid;
+    else if (atRole === 'technician') atOk = tRows[0].requester_id === atUid || tRows[0].assigned_to === atUid;
+    else if (!isBuiltinRole(atRole)) {
+      if (await hasCustomPage(atRole, 'tickets')) atOk = true;
+      else atOk = tRows[0].requester_id === atUid;
+    }
+    if (!atOk) { res.status(403).json({ error: 'Access denied' }); return; }
     const attachments = await sql.unsafe(`
       SELECT ta.*,
         json_build_object('id', u.id, 'username', u.username, 'full_name', u.full_name) as uploader

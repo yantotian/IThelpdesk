@@ -43,13 +43,18 @@ router.post('/', requireAccess(['it_admin', 'sysadmin'], 'categories'), async (r
 router.put('/:id', requireAccess(['it_admin', 'sysadmin'], 'categories'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, parent_id, is_active, sort_order } = req.body;
+    const existing = await sql`SELECT name, parent_id, is_active, sort_order FROM categories WHERE id = ${id} LIMIT 1`;
+    if (existing.length === 0) { res.status(404).json({ error: 'Category not found' }); return; }
+    const name = req.body.name !== undefined ? req.body.name : existing[0].name;
+    const parent_id = req.body.parent_id !== undefined ? req.body.parent_id : existing[0].parent_id;
+    const is_active = req.body.is_active !== undefined ? req.body.is_active : existing[0].is_active;
+    const sort_order = req.body.sort_order !== undefined ? req.body.sort_order : existing[0].sort_order;
     await sql`
       UPDATE categories SET
-        name = ${name || null},
-        parent_id = ${parent_id || null},
-        is_active = ${is_active !== undefined ? is_active : true},
-        sort_order = ${sort_order !== undefined ? sort_order : 0}
+        name = ${name},
+        parent_id = ${parent_id},
+        is_active = ${is_active},
+        sort_order = ${sort_order}
       WHERE id = ${id}
     `;
     res.json({ message: 'Category updated' });

@@ -127,13 +127,20 @@ router.post(
           res.status(400).json({ error: 'ticketId is required' });
           return;
         }
-        // Caller must be a participant of the ticket they are attaching to.
-        const allowed = await sql.unsafe(
-          `SELECT 1 FROM tickets
-            WHERE id = $1 AND (requester_id = $2 OR assigned_to = $2)
-            LIMIT 1`,
-          [ticketId, req.user!.id],
-        );
+        // Caller must be a participant of the ticket they are attaching to,
+        // or an admin.
+        const isAdmin = req.user!.role === 'it_admin' || req.user!.role === 'sysadmin';
+        let allowed: any[] = [];
+        if (isAdmin) {
+          allowed = await sql.unsafe(`SELECT 1 FROM tickets WHERE id = $1 LIMIT 1`, [ticketId]);
+        } else {
+          allowed = await sql.unsafe(
+            `SELECT 1 FROM tickets
+              WHERE id = $1 AND (requester_id = $2 OR assigned_to = $2)
+              LIMIT 1`,
+            [ticketId, req.user!.id],
+          );
+        }
         if (allowed.length === 0) {
           safeUnlink(req.file.path);
           res.status(403).json({ error: 'Access denied' });

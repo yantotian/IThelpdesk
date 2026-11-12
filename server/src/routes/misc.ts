@@ -22,7 +22,11 @@ router.get('/priority-configs', async (_req, res) => {
 router.put('/priority-configs/:id', requireAccess(['it_admin', 'sysadmin'], 'priorities'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { label, sla_hours, color } = req.body;
+    const existing = await sql`SELECT label, sla_hours, color FROM priority_config WHERE id = ${id} LIMIT 1`;
+    if (existing.length === 0) { res.status(404).json({ error: 'Priority config not found' }); return; }
+    const label = req.body.label !== undefined ? req.body.label : existing[0].label;
+    const sla_hours = req.body.sla_hours !== undefined ? req.body.sla_hours : existing[0].sla_hours;
+    const color = req.body.color !== undefined ? req.body.color : existing[0].color;
     await sql`UPDATE priority_config SET label = ${label}, sla_hours = ${sla_hours}, color = ${color} WHERE id = ${id}`;
     res.json({ message: 'Priority config updated' });
   } catch (error) {
