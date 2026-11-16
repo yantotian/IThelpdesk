@@ -88,9 +88,9 @@ the instance's security group / network firewall.
 
 ```bash
 # Pick a location for the stack
-sudo mkdir -p /opt/ciodesk
-sudo chown $USER:$USER /opt/ciodesk
-cd /opt/ciodesk
+sudo mkdir -p /etc/srv/ciodesk
+sudo chown $USER:$USER /etc/srv/ciodesk
+cd /etc/srv/ciodesk
 
 # Clone the repository
 git clone https://github.com/yantotian/IThelpdesk.git .
@@ -168,7 +168,7 @@ or want to expose the app directly:
 
 ## 6. Build and start the stack
 
-From `/opt/ciodesk`:
+From `/etc/srv/ciodesk`:
 
 ```bash
 docker compose up -d --build
@@ -254,7 +254,7 @@ Two Docker volumes hold all persistent state:
 ### Backup
 
 ```bash
-cd /opt/ciodesk
+cd /etc/srv/ciodesk
 
 # Database dump
 docker compose exec -T db pg_dump -U postgres helpdesk | gzip > helpdesk-$(date +%F).sql.gz
@@ -269,7 +269,7 @@ docker run --rm \
 ### Restore
 
 ```bash
-cd /opt/ciodesk
+cd /etc/srv/ciodesk
 docker compose down
 
 # Recreate the uploads volume and extract files
@@ -301,7 +301,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/opt/ciodesk
+WorkingDirectory=/etc/srv/ciodesk
 ExecStart=/usr/bin/docker compose up -d
 ExecStop=/usr/bin/docker compose down
 ExecReload=/usr/bin/docker compose up -d
@@ -324,7 +324,7 @@ If you run Compose as your user (docker group), adjust `WorkingDirectory`,
 ## 12. Updating the application
 
 ```bash
-cd /opt/ciodesk
+cd /etc/srv/ciodesk
 
 # 1. Always back up first (section 10)
 # 2. Pull the new code
@@ -379,7 +379,7 @@ docker compose logs -f caddy     # TLS proxy (if used)
 ## 15. Quick reference (copy-paste)
 
 ```bash
-cd /opt/ciodesk
+cd /etc/srv/ciodesk
 cp .env.example .env
 # edit .env: JWT_SECRET, ADMIN_PASSWORD (>=12 chars), POSTGRES_PASSWORD, SITE_ADDRESS
 
