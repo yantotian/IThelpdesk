@@ -67,10 +67,10 @@ services:
       - uploads:/app/uploads
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost/api/health"]
-      interval: 30s
+      interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 40s
+      retries: 12
+      start_period: 120s
 
   # TLS reverse proxy (Caddy). Publishes :80/:443 publicly and fronts the app.
   caddy:

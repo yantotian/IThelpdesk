@@ -36,9 +36,9 @@ API_PID=$!
 
 trap 'kill $API_PID $NGINX_PID 2>/dev/null || true' EXIT INT TERM
 
-# Wait briefly for the API to become healthy.
+# Wait for the API to become healthy (schema/init on first boot can take time).
 api_ready=0
-for _ in $(seq 1 30); do
+for _ in $(seq 1 90); do
   if node -e "
     const http = require('http');
     http.get('http://127.0.0.1:' + (${API_PORT}) + '/api/health', r => process.exit(r.statusCode === 200 ? 0 : 1))
