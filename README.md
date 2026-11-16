@@ -218,8 +218,8 @@ Then open **http://localhost:5577**.
 
 | Field | Value |
 | --- | --- |
-| Username | `admin` |
-| Password | `admin123` |
+| Username | `admin` (or your `ADMIN_USERNAME`) |
+| Password | the value you set in `ADMIN_PASSWORD` (development default: `admin123`) |
 
 **Change this immediately** after your first sign-in (Profile → Change password),
 or set a different password before the first boot with `ADMIN_PASSWORD` in `.env`.
@@ -258,11 +258,11 @@ automatically.
 | --- | --- | --- |
 | `JWT_SECRET` | *(required)* | Signs session tokens. Set a long random value. |
 | `APP_PORT` | `8880` | Port the app is published on. |
-| `POSTGRES_USER` | `postgres` | Database user. |
-| `POSTGRES_PASSWORD` | `postgres` | Database password. |
+| `POSTGRES_USER` | `postgres` | Database user (change in production). |
+| `POSTGRES_PASSWORD` | `postgres` | Database password (change in production). |
 | `POSTGRES_DB` | `helpdesk` | Database name. |
 | `ADMIN_USERNAME` | `admin` | First administrator's username (created on first boot only). |
-| `ADMIN_PASSWORD` | `admin123` | First administrator's password (created on first boot only). **Production requires ≥ 12 characters.** |
+| `ADMIN_PASSWORD` | *(required, ≥ 12 chars in production)* | First administrator's password (created on first boot only). |
 
 ### For a manual run (`/server/.env`)
 
@@ -273,7 +273,7 @@ automatically.
 | `PORT` | `5577` | Port the API listens on. |
 | `UPLOAD_DIR` | `server/uploads` | Where uploaded files are stored. |
 | `ADMIN_USERNAME` | `admin` | First administrator's username. |
-| `ADMIN_PASSWORD` | `admin123` | First administrator's password. **Production requires ≥ 12 characters.** |
+| `ADMIN_PASSWORD` | `admin123` (development default) | First administrator's password. **Production requires ≥ 12 characters.** |
 
 ### Optional frontend variable
 

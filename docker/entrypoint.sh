@@ -37,17 +37,24 @@ API_PID=$!
 trap 'kill $API_PID $NGINX_PID 2>/dev/null || true' EXIT INT TERM
 
 # Wait briefly for the API to become healthy.
+api_ready=0
 for _ in $(seq 1 30); do
   if node -e "
     const http = require('http');
     http.get('http://127.0.0.1:' + (${API_PORT}) + '/api/health', r => process.exit(r.statusCode === 200 ? 0 : 1))
         .on('error', () => process.exit(1));
   "; then
+    api_ready=1
     echo "[entrypoint] API healthy"
     break
   fi
   sleep 1
 done
+
+if [ "$api_ready" -ne 1 ]; then
+  echo "[entrypoint] API did not become healthy in time"
+  exit 1
+fi
 
 echo "[entrypoint] starting nginx"
 nginx -g "daemon off;" &

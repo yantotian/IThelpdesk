@@ -20,8 +20,9 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     command: ["postgres", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
-    ports:
-      - "127.0.0.1:5432:5432"
+    # Publish to localhost only if you need direct host access (psql/GUI tools):
+    # ports:
+    #   - "127.0.0.1:5432:5432"
     healthcheck:
       test:
         [

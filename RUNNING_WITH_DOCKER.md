@@ -371,7 +371,7 @@ docker compose logs -f caddy     # TLS proxy (if used)
 - [ ] `POSTGRES_PASSWORD` differs from the example.
 - [ ] `.env` is **not** committed to Git (it is gitignored).
 - [ ] App is not exposed directly to the internet unless you intend it — prefer Caddy or an existing reverse proxy with TLS.
-- [ ] Database port 5432 is **not** published to the host (it is not in `ports:` — only reachable via the Compose network).
+- [ ] Database port 5432 is **not** published to the host (the default Compose config keeps it internal; only reachable via the Compose network). Uncomment the `db.ports` mapping only if you need direct host access.
 - [ ] Keep the host and Docker updated (`apt-get upgrade`, security patches).
 - [ ] Consider fail2ban or rate limiting at the reverse-proxy level for the login endpoint.
 - [ ] Back up `postgres_data` and `uploads` regularly and test a restore.
