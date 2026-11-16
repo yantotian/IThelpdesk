@@ -10,7 +10,6 @@
     "express",
     "cli"
   ],
-  "homepage": "https://github.com/yantotian/IThelpdesk",
   "bugs": {
     "url": "https://github.com/yantotian/IThelpdesk/issues"
   },
@@ -90,6 +89,7 @@
     "node": ">=22"
   },
   "overrides": {
+    "braces": "file:./vendor/braces",
     "source-map-js": "1.2.2",
     "postcss-selector-parser": "7.1.6"
   },
