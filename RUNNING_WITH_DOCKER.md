@@ -1,8 +1,8 @@
-# Running Ciodesk Helpdesk with Docker on a Linux Server
+# Running Ciodesk Helpdesk with Docker on Fedora Server 44
 
 This guide walks through deploying the Ciodesk IT Helpdesk (React SPA + Express API +
-PostgreSQL) on a Linux server using Docker Compose. It assumes a fresh Linux host
-(Ubuntu/Debian/RHEL or similar) with root or sudo access.
+PostgreSQL) on **Fedora Server 44** using Docker Compose. It assumes a fresh Fedora host
+with root or sudo access, SELinux in enforcing mode (default), and `firewalld` enabled.
 
 The stack is defined by:
 
@@ -24,61 +24,74 @@ The stack is defined by:
 | `dev` | build target `api` | 5173 / 5577 | Source-mounted hot-reload stack (development only) |
 | `mailhog` / `pgadmin` | third-party | 8025/1025 / 8081 | Optional debugging tools |
 
-## 2. Prerequisites on the Linux server
+## 2. Prerequisites (Fedora Server 44)
 
 You need:
 
 - Docker Engine **and** the Compose plugin (`docker compose` — note the space, not the hyphen).
 - A non-root `sudo` user to run the stack (do not run Compose as root where avoidable).
 - Outbound internet access on first start (to pull images and build).
+- `git` and basic utilities (`curl`, `openssl`) for setup.
 
-### Install Docker (Ubuntu/Debian example)
+### Install Docker Engine (official Docker repo)
+
+Fedora Server 44 uses `dnf5`. Install Docker CE from Docker's official repository (recommended for current Engine/Compose/Buildx):
 
 ```bash
-# 1. Install prerequisites
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl gnupg
+# 1. Update base system and install utilities
+sudo dnf -y upgrade --refresh
+sudo dnf -y install git curl openssl
 
-# 2. Add Docker's official GPG key and repository
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+# 2. Remove conflicting/legacy packages if present (safe to ignore "no match" errors)
+sudo dnf -y remove docker docker-client docker-client-latest docker-common \
+  docker-latest docker-latest-logrotate docker-logrotate docker-engine \
+  podman-docker containerd runc || true
 
-# 3. Install Docker Engine + Compose plugin
-sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
-                        docker-buildx-plugin docker-compose-plugin
+# 3. Add Docker's official repository (dnf5 syntax)
+sudo dnf -y install dnf-plugins-core
+sudo dnf config-manager addrepo --from-repofile=https://download.docker.com/linux/fedora/docker-ce.repo
 
-# 4. Let your user run docker without sudo (optional but convenient)
+# 4. Install Docker Engine + Compose plugin + Buildx
+sudo dnf -y install docker-ce docker-ce-cli containerd.io \
+  docker-buildx-plugin docker-compose-plugin
+
+# 5. Enable and start Docker
+sudo systemctl enable --now docker
+
+# 6. (Optional) Run docker without sudo
 sudo usermod -aG docker $USER
 newgrp docker        # applies group membership in this shell
 ```
 
-For RHEL/Alma/Rocky, substitute `dnf install docker-ce ...` and enable the Docker CE repo.  
-Verify: `docker --version` and `docker compose version`.
+Verify:
 
-### Open ports in the firewall
+```bash
+docker --version
+docker compose version
+sudo systemctl status docker --no-pager
+```
+
+> **SELinux:** Fedora enforces SELinux by default. The production stack uses named volumes and bind-mounts config files from `docker/` with `:z` relabeling for container access. If you still hit permission denials on bind-mounted paths, relabel the app directory: `sudo chcon -Rt svirt_sandbox_file_t /etc/srv/ciodesk`.
+
+### Open ports in the firewall (`firewalld`)
 
 Choose your exposure model first (section 5), then open exactly what you need:
 
 | Mode | Ports to open |
 |------|---------------|
-| Caddy public TLS (recommended) | 80 (HTTP→HTTPS redirect) and 443 (HTTPS) |
-| Direct / existing reverse proxy | only the `APP_PORT` (default 8880), bound to `127.0.0.1` |
-
-Ubuntu (`ufw`):
+| Caddy public TLS (recommended) | `http` (80, redirect) and `https` (443) |
+| Direct / existing reverse proxy | only `APP_PORT` (default 8880), bound as needed |
 
 ```bash
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-# or, for direct exposure:
-# sudo ufw allow 8880/tcp
-sudo ufw enable
+# Model A: Caddy public TLS (recommended)
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-service=https
+
+# Model B: direct exposure instead of/in addition to above (adjust port if changed)
+# sudo firewall-cmd --permanent --add-port=8880/tcp
+
+sudo firewall-cmd --reload
+sudo firewall-cmd --list-all
 ```
 
 On cloud providers (AWS, Hetzner, DigitalOcean, etc.), also open the same ports in
@@ -372,7 +385,7 @@ docker compose logs -f caddy     # TLS proxy (if used)
 - [ ] `.env` is **not** committed to Git (it is gitignored).
 - [ ] App is not exposed directly to the internet unless you intend it — prefer Caddy or an existing reverse proxy with TLS.
 - [ ] Database port 5432 is **not** published to the host (the default Compose config keeps it internal; only reachable via the Compose network). Uncomment the `db.ports` mapping only if you need direct host access.
-- [ ] Keep the host and Docker updated (`apt-get upgrade`, security patches).
+- [ ] Keep the host and Docker updated (`sudo dnf -y upgrade --refresh`, security patches).
 - [ ] Consider fail2ban or rate limiting at the reverse-proxy level for the login endpoint.
 - [ ] Back up `postgres_data` and `uploads` regularly and test a restore.
 
