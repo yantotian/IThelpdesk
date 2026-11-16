@@ -9,7 +9,7 @@ The stack is defined by:
 | File | Purpose |
 |------|---------|
 | `Dockerfile` | 3-stage image: SPA build → API build → nginx + Node runtime |
-| `docker-compose.yml` | app + PostgreSQL (+ optional Caddy TLS proxy, dev, Mailpit, pgAdmin) |
+| `docker-compose.yml` | app + PostgreSQL (+ optional dev, Mailpit, pgAdmin profiles) |
 | `docker/nginx.conf` | nginx serving the SPA and proxying `/api` to Express |
 | `docker/entrypoint.sh` | waits for Postgres, applies schema, starts API + nginx |
 | `.env` | runtime configuration (create from `.env.example`, never commit it) |
@@ -19,10 +19,9 @@ The stack is defined by:
 | Service | Image | Port (internal) | Notes |
 |---------|-------|-----------------|-------|
 | `db` | `postgres` (pinned by digest) | 5432 | Persists data in the `postgres_data` volume |
-| `app` | built from `Dockerfile` | 80 (nginx) → 5577 (API) | SPA + API in one container; publishes to `127.0.0.1` by default |
-| `caddy` | `caddy:2-alpine` | 80 / 443 | Optional public TLS reverse proxy in front of `app` |
-| `dev` | build target `api` | 5173 / 5577 | Source-mounted hot-reload stack (development only) |
-| `mailhog` / `pgadmin` | third-party | 8025/1025 / 8081 | Optional debugging tools |
+| `app` | built from `Dockerfile` | 80 (nginx) → 5577 (API) | SPA + API in one container; published to `127.0.0.1:${APP_PORT:-8880}` by default |
+| `dev` | build target `api` | 5173 / 5577 | Source-mounted hot-reload stack (development only, `--profile dev`) |
+| `mailhog` / `pgadmin` | third-party | 8025/1025 / 8081 | Optional debugging tools (`--profile tools`) |
 
 ## 2. Prerequisites (Fedora Server 44)
 
@@ -71,25 +70,21 @@ docker compose version
 sudo systemctl status docker --no-pager
 ```
 
-> **SELinux:** Fedora enforces SELinux by default. The production stack uses named volumes and bind-mounts config files from `docker/` with `:z` relabeling for container access. If you still hit permission denials on bind-mounted paths, relabel the app directory: `sudo chcon -Rt svirt_sandbox_file_t /etc/srv/ciodesk`.
+> **SELinux:** Fedora enforces SELinux by default. The production stack primarily uses named volumes. If you add bind mounts or hit permission denials on host paths, relabel the app directory: `sudo chcon -Rt svirt_sandbox_file_t /etc/srv/ciodesk` (or add `:z` to specific bind mounts).
 
 ### Open ports in the firewall (`firewalld`)
 
-Choose your exposure model first (section 5), then open exactly what you need:
+The app is published to `127.0.0.1:${APP_PORT:-8880}` by default (not public). Only open ports that you intentionally expose:
 
 | Mode | Ports to open |
 |------|---------------|
-| Caddy public TLS (recommended) | `http` (80, redirect) and `https` (443) |
-| Direct / existing reverse proxy | only `APP_PORT` (default 8880), bound as needed |
+| Host-local / SSH tunnel only (default) | none |
+| Reverse proxy on same host | none (proxy to `127.0.0.1:${APP_PORT}`) |
+| Direct external access | `APP_PORT` (default 8880) |
 
 ```bash
-# Model A: Caddy public TLS (recommended)
-sudo firewall-cmd --permanent --add-service=http
-sudo firewall-cmd --permanent --add-service=https
-
-# Model B: direct exposure instead of/in addition to above (adjust port if changed)
+# Direct external access (adjust port if changed)
 # sudo firewall-cmd --permanent --add-port=8880/tcp
-
 sudo firewall-cmd --reload
 sudo firewall-cmd --list-all
 ```
@@ -135,8 +130,8 @@ POSTGRES_DB=helpdesk
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=<strong-password-at-least-12-chars>
 
-# Public domain served by Caddy with Let's Encrypt, or "localhost" for internal TLS
-SITE_ADDRESS=helpdesk.yourcompany.com
+# (Optional) If you place this behind an external reverse proxy/TLS terminator,
+# configure its site/domain there (Caddy is not included in this Compose stack).
 ```
 
 ### Critical rules
@@ -153,31 +148,24 @@ SITE_ADDRESS=helpdesk.yourcompany.com
 
 ## 5. Choose an exposure model
 
-### Model A — Caddy handles public HTTPS (default compose)
-`docker-compose.yml` already includes a `caddy` service. It listens on public
-ports 80 and 443, terminates TLS (Let's Encrypt for a real domain, internal
-self-signed TLS for `localhost`), and reverse-proxies to `app:80` over the
-private Compose network. `app` itself is published only to `127.0.0.1`, so it is
-not directly reachable from the internet.
+The Compose stack publishes `app` on `127.0.0.1:${APP_PORT:-8880}` by default.
 
-Use this when you have a domain whose DNS points at this server.
+### Model A — Behind an existing reverse proxy (recommended)
+Use nginx/Caddy/Traefik/Cloudflare Tunnel on the host or another host to terminate
+TLS and proxy to `http://127.0.0.1:${APP_PORT:-8880}`. Keep the app bound to
+`127.0.0.1` and do not expose port 8880 publicly.
 
-### Model B — App exposed directly / behind your own reverse proxy
-If you already have a reverse proxy (nginx, Caddy, Traefik, Cloudflare Tunnel)
-or want to expose the app directly:
+### Model B — Direct access (no reverse proxy)
+If you need direct access to the app port, change the `app` publish binding in
+`docker-compose.yml`:
 
-1. Remove (or comment out) the `caddy` service from `docker-compose.yml`, or
-   simply `docker compose up -d app db` without caddy.
-2. Change the `app` publish binding from `127.0.0.1` to `0.0.0.0` so the proxy
-   can reach it, e.g. in `docker-compose.yml`:
+```yaml
+ports:
+  - "0.0.0.0:${APP_PORT:-8880}:80"
+```
 
-   ```yaml
-   ports:
-     - "0.0.0.0:${APP_PORT:-8880}:80"
-   ```
-
-3. Point your external proxy at `http://127.0.0.1:${APP_PORT}` (localhost) or the
-   container's published port, and terminate TLS there.
+Then open `APP_PORT` in `firewalld`/cloud firewall. For production/public use,
+prefer terminating TLS in front of the app.
 
 ## 6. Build and start the stack
 
@@ -188,7 +176,7 @@ docker compose up -d --build
 ```
 
 - The first start takes several minutes: it builds the Vite SPA, compiles the
-  TypeScript API, pulls PostgreSQL/Caddy images, and applies the database schema.
+  TypeScript API, pulls the PostgreSQL image, and applies the database schema.
 - Watch progress: `docker compose logs -f app --tail=50`
 - `docker compose up -d` (without `--build`) on later starts reuses the image.
 
@@ -207,8 +195,8 @@ docker compose exec -T app curl -fsS http://localhost/api/health
 # -> {"status":"ok","timestamp":"..."}
 
 # 3. Open the app in a browser
-# Model A (Caddy): https://helpdesk.yourcompany.com   (or http:// for internal TLS)
-# Model B (direct): http://<server-ip>:8880
+# Model A (reverse proxy): https://helpdesk.yourcompany.com (or your proxy URL)
+# Model B (direct): http://<server-ip>:8880 (or http://localhost:8880 on the host)
 ```
 
 Default login (change immediately after first sign-in):
@@ -364,7 +352,7 @@ update; it destroys the database.
 | `app` unhealthy on `/api/health` | Postgres not ready yet, or `DATABASE_URL` wrong | `docker compose logs -f db`; check `POSTGRES_*` values; wait for `db` to become healthy |
 | Build OOM / BuildKit killed | Frontend + API builds spiking memory on small hosts | The Dockerfile already caps Node heap and sequences the stages; on very small VMs (1–2 GB) add swap |
 | `npm ci` fails on `braces` (ENOENT) | `vendor/` missing from build context | Ensure `vendor/braces` is present (it is committed in the repo) |
-| Can't reach the app from outside | `app` publishes only to `127.0.0.1` | Use Caddy (Model A), or bind to `0.0.0.0` (Model B) and open the firewall port |
+| Can't reach the app from outside | `app` publishes only to `127.0.0.1` | Place an external reverse proxy on the host targeting `127.0.0.1:${APP_PORT}`, or bind app to `0.0.0.0` (Model B) and open the firewall port |
 | `curl` not found in healthcheck | `curl` missing from runtime image | The Dockerfile installs `curl` via `apk`; rebuild with `--build` |
 | Forgotten admin password | Hash stored in DB | Run the reset snippet in section 9 |
 
@@ -374,7 +362,7 @@ update; it destroys the database.
 docker compose ps
 docker compose logs -f db        # database
 docker compose logs -f app       # app (API + nginx)
-docker compose logs -f caddy     # TLS proxy (if used)
+# (Caddy service removed; use your external reverse proxy logs if applicable)
 ```
 
 ## 14. Security checklist for production
@@ -383,7 +371,7 @@ docker compose logs -f caddy     # TLS proxy (if used)
 - [ ] `ADMIN_PASSWORD` is ≥ 12 characters and changed after first login.
 - [ ] `POSTGRES_PASSWORD` differs from the example.
 - [ ] `.env` is **not** committed to Git (it is gitignored).
-- [ ] App is not exposed directly to the internet unless you intend it — prefer Caddy or an existing reverse proxy with TLS.
+- [ ] App is not exposed directly to the internet unless you intend it — prefer an external reverse proxy with TLS in front of `127.0.0.1:${APP_PORT}`.
 - [ ] Database port 5432 is **not** published to the host (the default Compose config keeps it internal; only reachable via the Compose network). Uncomment the `db.ports` mapping only if you need direct host access.
 - [ ] Keep the host and Docker updated (`sudo dnf -y upgrade --refresh`, security patches).
 - [ ] Consider fail2ban or rate limiting at the reverse-proxy level for the login endpoint.
@@ -394,11 +382,11 @@ docker compose logs -f caddy     # TLS proxy (if used)
 ```bash
 cd /etc/srv/ciodesk
 cp .env.example .env
-# edit .env: JWT_SECRET, ADMIN_PASSWORD (>=12 chars), POSTGRES_PASSWORD, SITE_ADDRESS
+# edit .env: JWT_SECRET, ADMIN_PASSWORD (>=12 chars), POSTGRES_PASSWORD
 
 docker compose up -d --build
 docker compose logs -f app
-# open https://helpdesk.yourcompany.com  (or http://localhost:8880 locally)
+# open http://localhost:8880 on the host (or via your reverse proxy URL)
 
 # everyday
 docker compose ps

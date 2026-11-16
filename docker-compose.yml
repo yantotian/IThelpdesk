@@ -72,39 +72,6 @@ services:
       retries: 12
       start_period: 120s
 
-  # TLS reverse proxy (Caddy). Publishes :80/:443 publicly and fronts the app.
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    depends_on:
-      app:
-        condition: service_healthy
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
-    volumes:
-      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro,z
-      - caddy_data:/data
-      - caddy_config:/config
-    security_opt:
-      - no-new-privileges:true
-    cap_drop: ["ALL"]
-    cap_add: ["NET_BIND_SERVICE"]
-    deploy:
-      resources:
-        limits:
-          cpus: "0.50"
-          memory: 128M
-          pids: 128
-    healthcheck:
-      test: ["CMD", "caddy", "version"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-
   # Development service: source-mounted for hot-reloading. Uses the `api` build
   # stage so both Vite and tsx dependencies are available in one container.
   # It is intentionally opt-in so `docker compose up -d` only starts the
@@ -188,5 +155,3 @@ volumes:
   postgres_data:
   pgadmin_data:
   uploads:
-  caddy_data:
-  caddy_config:

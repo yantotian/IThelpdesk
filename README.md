@@ -123,7 +123,7 @@ for example `APP_PORT=80`). Port 8880 is the default; change it if you need a
 different host port. The internal container port is always 80 (nginx).
 
 To serve it over HTTPS on a public domain, put it behind a TLS-terminating
-reverse proxy (Caddy, Traefik, or an existing nginx) that forwards to
+reverse proxy (Caddy, Traefik, nginx, etc.) that forwards to
 `127.0.0.1:${APP_PORT:-8880}`, or add your own certificates to
 `docker/nginx.conf`.
 
@@ -148,9 +148,8 @@ systemctl status ciodeks-fedora.service
 journalctl -u ciodeks-fedora.service -f
 ```
 
-The app listens on port 5577 by default; open `http://<server>:5577`. A Caddy or
-nginx reverse proxy (or the included Docker/Caddy stack) can sit in front of it for
-TLS.
+The app listens on port 5577 by default; open `http://<server>:5577`. A reverse
+proxy (Caddy, nginx, Traefik, etc.) can sit in front of it for TLS.
 
 ## Running without Docker
 
